@@ -1,7 +1,7 @@
 ---
 description: Orquesta el flujo completo de seguridad recon -> scan(SAST) + watch(SCA) -> red-team -> triage -> plan -> fix -> patch -> verify sobre el repo o un paquete
-argument-hint: [ruta-o-paquete] [--solo-deteccion] [--dry-run]
-allowed-tools: Task, Read, Grep, Glob, Bash(git:*), Bash(mkdir:*), Bash(python3:*), Write, TodoWrite, WebSearch, WebFetch
+argument-hint: [ruta-o-paquete] [--solo-deteccion] [--dry-run] [--no-panel]
+allowed-tools: Task, Read, Grep, Glob, Bash(git:*), Bash(mkdir:*), Bash(python3:*), Bash(bash:*), Write, TodoWrite, WebSearch, WebFetch
 model: opus
 ---
 
@@ -23,6 +23,19 @@ Todos los agentes leen y escriben `.vuln-hunter/ledger.json` segun el skill
 **ledger-contract**. Inicializa el ledger si no existe. No se pasa prosa entre
 agentes: se pasa el ledger.
 
+## Paso 0: panel vivo (LO PRIMERO, antes de todo lo demas)
+Antes de la pregunta de reanudacion y de cualquier subagente o evento, levanta el
+panel y abrelo en el navegador para que el usuario vea el proceso DESDE EL
+PRINCIPIO:
+```
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/serve-panel.sh
+```
+- Corre esto UNA sola vez, al inicio (antes de `run:start`).
+- Es idempotente: si el panel ya esta corriendo, no abre otra pestana.
+- Arranca vacio y se va llenando solo (polling 2s) conforme emites los eventos de
+  actividad de abajo: el usuario ve aparecer recon, SAST, hallazgos, etc. en vivo.
+- Si el usuario paso `--no-panel`, OMITE este paso (no levantes el panel).
+
 ## Reanudacion y retrocompatibilidad (importante)
 Si YA existe `.vuln-hunter/ledger.json` (ver "Auditoria previa" arriba), NO
 reinicies desde cero:
@@ -41,6 +54,8 @@ Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
   plan, pero NO aplica fixes, NO commitea y NO toca el working tree. Ideal para
   un primer pase seguro.
 - `--solo-deteccion`: como dry-run pero se detiene tras el triage (sin plan/fix).
+- `--no-panel`: no levanta ni abre el panel vivo (util en CI/headless). Por
+  defecto el panel se abre solo al inicio (ver Paso 0).
 
 ## Orquestacion (subagentes via Task, en orden)
 1. **recon-cartographer** -> escribe `attack_surface` en el ledger (bloquea).
@@ -62,7 +77,18 @@ Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
 ## Salida final
 Informe consolidado desde el ledger: vulnerability ledger, plan, fixes (si
 aplica), verificacion, seccion "Que esta seguro" y Action Plan priorizado
-(Inmediato / Esta semana / Este mes). Sugiere `/vuln-hunter:report` para el HTML.
+(Inmediato / Esta semana / Este mes).
+
+### Informe formal descargable (AUTOMATICO al terminar)
+Cuando el flujo termina (tras verify, o tras triage si es dry-run/solo-deteccion),
+GENERA el informe formal automaticamente — no esperes a que el usuario lo pida:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/report.py .vuln-hunter/ledger.json .vuln-hunter/audit-report
+```
+Esto escribe `.vuln-hunter/audit-report.md`, `.html` y (si hay convertidor) `.pdf`,
+con las 3 secciones: auditoria/diagnostico, estrategia/plan y resultados. Luego
+dile al usuario que puede **descargarlo desde el panel** (boton "Informe") o abrir
+`.vuln-hunter/audit-report.html` y usar "Descargar PDF".
 
 ## Visualizacion entre pasos (importante para la UX)
 Tras CADA agente del flujo, muestra el dashboard de estado para que el usuario
@@ -80,7 +106,8 @@ opciones interactivas si esta disponible) — nunca mas de una pregunta a la vez
 Ademas del dashboard de texto, emite eventos al timeline del panel con el helper
 `scripts/activity.py`. Hazlo en los BORDES de cada etapa (no dentro del agente):
 
-- Al iniciar TODO el flujo, una vez:
+- Al iniciar TODO el flujo, una vez (el panel del Paso 0 ya esta abierto y
+  esperando estos eventos):
   ```
   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py run:start scope="<scope o repo>"
   ```
@@ -117,4 +144,5 @@ Ademas del dashboard de texto, emite eventos al timeline del panel con el helper
   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py run:done
   ```
 
-Sugiere al usuario abrir el panel con `/vuln-hunter:panel` para verlo en vivo.
+El panel ya quedo abierto desde el Paso 0; el usuario vio todo el proceso en vivo.
+Si lo cerro, puede reabrirlo con `/vuln-hunter:panel`.

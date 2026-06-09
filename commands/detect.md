@@ -1,7 +1,7 @@
 ---
 description: Detecta los stacks del proyecto/monorepo y guarda el scope en .vuln-hunter/stacks.json
-argument-hint: [ruta-raiz]
-allowed-tools: Read, Glob, Bash(find:*), Bash(mkdir:*), Bash(python3:*), Write
+argument-hint: [ruta-raiz] [--no-panel]
+allowed-tools: Read, Glob, Bash(find:*), Bash(mkdir:*), Bash(python3:*), Bash(bash:*), Write
 model: sonnet
 ---
 
@@ -28,8 +28,17 @@ El agente presenta su resultado con el skill `agent-presentation` (cabecera con
 icono, resumen de 3 lineas, tabla con emoji-semaforo, barra de progreso) y cierra
 con el bloque "▶ Siguiente paso". Tras detectar, recomienda `/vuln-hunter:scan` + `/vuln-hunter:watch`.
 
+## Paso 0: panel vivo (LO PRIMERO, antes de detectar)
+Como `detect` suele ser el inicio del flujo, levanta el panel y abrelo en el
+navegador ANTES de nada, para que el usuario vea el proceso desde el principio:
+```
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/serve-panel.sh
+```
+- Una sola vez, al inicio. Idempotente: si ya esta corriendo, no reabre.
+- Si el usuario paso `--no-panel`, OMITE este paso.
+
 ## Eventos de actividad (panel)
-Al empezar la deteccion (es el inicio del flujo), emite:
+Con el panel ya abierto (Paso 0), al empezar la deteccion emite:
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py run:start scope="<scope o repo completo>"
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=detect

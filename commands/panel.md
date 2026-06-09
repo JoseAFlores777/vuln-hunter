@@ -1,7 +1,7 @@
 ---
 description: Levanta el panel administrativo vivo (React+CDN, estatico) que lee el ledger y activity.jsonl y se actualiza por polling
 argument-hint: [puerto]
-allowed-tools: Bash(python3:*), Bash(cp:*), Bash(mkdir:*), Bash(open:*), Read
+allowed-tools: Bash(bash:*), Read
 model: haiku
 ---
 
@@ -12,21 +12,15 @@ hace polling de `ledger.json` y `activity.jsonl` cada 2s, asi que se actualiza
 solo mientras corre la auditoria.
 
 ## Pasos
-1. Asegura la carpeta de estado:
+1. Levanta el panel y abrelo en el navegador con el helper compartido (mkdir + cp
+   del asset + servidor estatico en segundo plano + open). Puerto $ARGUMENTS o
+   8765 por defecto. Es idempotente: si ya esta corriendo, no abre otra pestana:
    ```
-   mkdir -p .vuln-hunter
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/serve-panel.sh ${ARGUMENTS:-8765}
    ```
-2. Copia el panel (asset del plugin) junto a los datos para que los `fetch()` sean
-   hermanos:
-   ```
-   cp ${CLAUDE_PLUGIN_ROOT}/panel/index.html .vuln-hunter/index.html
-   ```
-3. Lanza el servidor estatico EN SEGUNDO PLANO (puerto $ARGUMENTS o 8765 por
-   defecto) y abre el navegador:
-   ```
-   (python3 -m http.server ${ARGUMENTS:-8765} --directory .vuln-hunter >/dev/null 2>&1 &) ; sleep 1 ; open "http://localhost:${ARGUMENTS:-8765}/index.html"
-   ```
-4. Dile al usuario:
+   Es el MISMO helper que `/vuln-hunter:hunt` y `/vuln-hunter:detect` corren solos
+   al inicio, asi que aqui solo lo usas para (re)abrirlo manualmente.
+2. Dile al usuario:
    - URL: `http://localhost:<puerto>/index.html`
    - El panel se refresca solo cada 2s; deja esta terminal y corre la auditoria en
      otra (o sigue con `/vuln-hunter:hunt`).

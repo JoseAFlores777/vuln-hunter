@@ -379,9 +379,12 @@ function CopyBtn({cmd}){
   return <button className={"copybtn"+(ok?" ok":"")} onClick={click} title={"Copiar: "+cmd}>{ok?"✓":"⧉"}</button>;
 }
 // Barra de acciones globales: status, reanudar la cadena, siguiente paso.
-function ActionsBar({ledger,findings}){
+function ActionsBar({ledger,findings,runDone}){
   const scope = (ledger.run||{}).scope;
   const resume = "/vuln-hunter:hunt"+(scope?" "+scope:"");
+  const dl = {fontFamily:"var(--mono,monospace)",fontSize:"12.5px",fontWeight:600,textDecoration:"none",
+    border:"1px solid rgba(120,160,200,.22)",borderRadius:"8px",padding:"7px 12px",
+    color:"var(--cyan,#22d3ee)",background:"rgba(34,211,238,.06)",display:"inline-flex",gap:"7px",alignItems:"center"};
   return (
     <div className="block">
       <div className="eyebrow">Acciones · copiar y pegar en Claude Code</div>
@@ -390,6 +393,14 @@ function ActionsBar({ledger,findings}){
         <CmdChip label="Reanudar cadena" cmd={resume} kind="primary"/>
         <CmdChip label="Siguiente paso" cmd={nextStep(findings)} kind="next"/>
       </div>
+      {runDone && (
+        <div className="cmdbar" style={{marginTop:"10px",alignItems:"center"}}>
+          <span className="eyebrow" style={{margin:"0 4px 0 0"}}>Informe</span>
+          <a style={dl} href="audit-report.html" target="_blank" rel="noopener">📄 Abrir · imprimir PDF</a>
+          <a style={dl} href="audit-report.pdf" download>⬇ PDF</a>
+          <a style={dl} href="audit-report.md" download>⬇ Markdown</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -704,7 +715,7 @@ function App(){
       {kev>0 && <div className="alert"><span className="aic">⚠</span><div className="atxt"><b>Atención:</b> {kev} dependencia(s) de producción con CVE en CISA KEV. El deploy queda bloqueado hasta parchear (vector típico de ransomware, MITRE T1190).</div></div>}
 
       <SummaryCards findings={findings}/>
-      <ActionsBar ledger={ledger} findings={findings}/>
+      <ActionsBar ledger={ledger} findings={findings} runDone={runDone}/>
       <PipelineGraph activity={activity} ledger={ledger}/>
       <Bitacora activity={activity} findings={findings}/>
       <FindingsPanel findings={findings}/>
