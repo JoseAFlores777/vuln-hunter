@@ -1,0 +1,4 @@
+# PLANTADA: version con CVEs conocidos para probar el threat-intel-scout (SCA)
+Django==3.2.4
+requests==2.19.1
+PyYAML==5.1

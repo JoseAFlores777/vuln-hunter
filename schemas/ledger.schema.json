@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vuln-hunter ledger",
+  "description": "Estado compartido entre todos los agentes de vuln-hunter. Vive en .vuln-hunter/ledger.json. Cada agente LEE el ledger, lo enriquece y lo vuelve a escribir. No se pasa prosa entre agentes: se pasa este objeto.",
+  "type": "object",
+  "required": ["schema_version", "run", "findings"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "run": {
+      "type": "object",
+      "required": ["started_at", "scope"],
+      "properties": {
+        "started_at": { "type": "string", "description": "ISO-8601" },
+        "scope": { "type": "string", "description": "ruta o paquete auditado; vacio = repo completo" },
+        "owasp_version": { "type": "string", "enum": ["2021", "2025"], "default": "2025" },
+        "branch": { "type": "string" },
+        "stacks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "attack_surface": {
+      "type": "object",
+      "description": "Lo escribe recon-cartographer.",
+      "properties": {
+        "entrypoints": { "type": "array", "items": { "type": "string" } },
+        "trust_boundaries": { "type": "array", "items": { "type": "string" } },
+        "high_risk_zones": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Cada agente AÑADE sus campos al mismo finding por su id, no crea duplicados.",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "title", "status"],
+        "properties": {
+          "id": { "type": "string", "description": "p.ej. VULN-001" },
+          "source": { "type": "string", "enum": ["sast", "sca", "threat-intel", "recon"] },
+          "title": { "type": "string" },
+          "location": { "type": "string", "description": "archivo:linea, o paquete@version para SCA/threat-intel" },
+          "cwe": { "type": "string" },
+          "owasp_2021": { "type": "string" },
+          "owasp_2025": { "type": "string" },
+
+          "sast": {
+            "type": "object",
+            "description": "Lo escribe sast-analyst.",
+            "properties": {
+              "tool": { "type": "string" },
+              "rule": { "type": "string" },
+              "flow": { "type": "string", "description": "SRC ... -> SINK ..." },
+              "confidence": { "type": "integer", "minimum": 1, "maximum": 10 },
+              "hypothesis": { "type": "string" },
+              "sarif_ref": { "type": "string", "description": "ruta + ruleId del SARIF de origen" }
+            }
+          },
+
+          "exploitability": {
+            "type": "object",
+            "description": "Lo escribe redteam-whitehat. Solo PoC conceptual.",
+            "properties": {
+              "verdict": { "type": "string", "enum": ["EXPLOITABLE", "NOT_EXPLOITABLE", "CONDITIONAL"] },
+              "reachable": { "type": "boolean" },
+              "controllable": { "type": "boolean" },
+              "conditions": { "type": "string" },
+              "conceptual_chain": { "type": "array", "items": { "type": "string" } },
+              "confidence_adjusted": { "type": "integer", "minimum": 1, "maximum": 10 }
+            }
+          },
+
+          "intel": {
+            "type": "object",
+            "description": "Lo escribe threat-intel-scout (dependencias).",
+            "properties": {
+              "package": { "type": "string" },
+              "installed_version": { "type": "string" },
+              "ecosystem": { "type": "string", "enum": ["PyPI", "npm", "NuGet", "other"] },
+              "is_production_dep": { "type": "boolean" },
+              "cve_ids": { "type": "array", "items": { "type": "string" } },
+              "ghsa_ids": { "type": "array", "items": { "type": "string" } },
+              "in_cisa_kev": { "type": "boolean" },
+              "known_ransomware_use": { "type": "boolean" },
+              "epss": { "type": "number", "minimum": 0, "maximum": 1 },
+              "fixed_version": { "type": "string" },
+              "sources_consulted": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+
+          "triage": {
+            "type": "object",
+            "description": "Lo escribe triage-judge.",
+            "properties": {
+              "cvss": { "type": "number" },
+              "cvss_version": { "type": "string", "enum": ["3.1", "4.0"] },
+              "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "FILTERED"] },
+              "dedup_of": { "type": "array", "items": { "type": "string" } },
+              "rationale": { "type": "string" }
+            }
+          },
+
+          "fix": {
+            "type": "object",
+            "description": "Lo escribe appsec-fixer.",
+            "properties": {
+              "root_cause": { "type": "string" },
+              "files_touched": { "type": "array", "items": { "type": "string" } },
+              "asvs": { "type": "string" },
+              "summary": { "type": "string" },
+              "applied": { "type": "boolean", "description": "aplicado al working tree, sin commit" }
+            }
+          },
+
+          "verification": {
+            "type": "object",
+            "description": "Lo escribe verify-engineer.",
+            "properties": {
+              "rescan_clear": { "type": "boolean" },
+              "tests_pass": { "type": "boolean" },
+              "no_new_findings": { "type": "boolean" },
+              "verdict": { "type": "string", "enum": ["CLOSED", "NOT_CLOSED", "REGRESSION"] },
+              "evidence": { "type": "string" }
+            }
+          },
+
+          "status": {
+            "type": "string",
+            "enum": ["hypothesis", "confirmed", "triaged", "planned", "fixed", "closed", "filtered"],
+            "description": "Estado global del finding a lo largo del flujo."
+          }
+        }
+      }
+    },
+    "plan_ref": { "type": "string", "description": "ruta al plan de remediacion (superpowers o .vuln-hunter/plan.md)" }
+  }
+}

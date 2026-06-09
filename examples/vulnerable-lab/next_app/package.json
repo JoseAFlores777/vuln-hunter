@@ -1,0 +1,11 @@
+{
+  "name": "vuln-lab-next",
+  "version": "1.0.0",
+  "dependencies": {
+    "next": "13.4.0",
+    "lodash": "4.17.4"
+  },
+  "devDependencies": {
+    "eslint": "8.0.0"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "vuln-hunter",
+  "version": "1.2.0",
+  "description": "Kit multi-agente de seguridad ofensiva-defensiva para detectar, triar, vigilar amenazas en dependencias, planificar, arreglar, parchear y verificar vulnerabilidades en proyectos y monorepos. Alineado a OWASP Top 10 (2021 y 2025). Trabajo defensivo autorizado unicamente.",
+  "author": {
+    "name": "vuln-hunter",
+    "url": "https://github.com/tu-usuario/vuln-hunter"
+  },
+  "homepage": "https://github.com/tu-usuario/vuln-hunter",
+  "repository": "https://github.com/tu-usuario/vuln-hunter",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "owasp",
+    "sast",
+    "sca",
+    "threat-intelligence",
+    "vulnerability",
+    "appsec",
+    "red-team",
+    "ransomware",
+    "monorepo"
+  ],
+  "agents": "./agents/",
+  "commands": "./commands/",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "vuln-hunter-marketplace",
+  "owner": {
+    "name": "tu-usuario",
+    "email": "tu@email.com"
+  },
+  "metadata": {
+    "description": "Marketplace del kit de seguridad vuln-hunter.",
+    "version": "1.2.0"
+  },
+  "plugins": [
+    {
+      "name": "vuln-hunter",
+      "source": "./",
+      "description": "Kit multi-agente OWASP para deteccion, triage, threat-intel, fix, patch y verificacion de vulnerabilidades.",
+      "category": "security",
+      "version": "1.2.0"
+    }
+  ]
+}
