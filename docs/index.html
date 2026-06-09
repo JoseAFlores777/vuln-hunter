@@ -11,7 +11,7 @@
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:title" content="vuln-hunter — Kit multi-agente de seguridad para Claude Code" />
-<meta property="og:description" content="7 agentes, 12 comandos. SAST + SCA + red-team + triage + fix + verify. Alineado a OWASP Top 10. Defensivo y autorizado." />
+<meta property="og:description" content="7 agentes, 15 comandos. SAST + SCA + red-team + triage + fix + verify. Panel vivo. Alineado a OWASP Top 10. Defensivo y autorizado." />
 <meta property="og:url" content="https://JoseAFlores777.github.io/vuln-hunter/" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -335,6 +335,19 @@ h1.hero-title .accent{
 .agent .meth span{font-family:var(--mono);font-size:11px;color:var(--ink-mute);border:1px solid var(--line-2);border-radius:6px;padding:3px 8px;background:rgba(255,255,255,.02)}
 
 /* ---------- commands ---------- */
+/* panel showcase */
+.shots{display:grid;grid-template-columns:1fr;gap:22px;margin-top:8px}
+.shot{position:relative;border:1px solid var(--line-2);border-radius:16px;overflow:hidden;background:linear-gradient(180deg,var(--panel),var(--bg-2));box-shadow:0 40px 90px -50px rgba(0,0,0,.9),0 0 0 1px rgba(34,211,238,.05);margin:0}
+.shot::before{content:"";position:absolute;inset:0;border-radius:16px;background:radial-gradient(120% 80% at 0% 0%,rgba(34,211,238,.07),transparent 55%);pointer-events:none;z-index:1}
+.shot img{display:block;width:100%;height:auto}
+.shot .cap{display:flex;align-items:center;gap:9px;padding:12px 16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12.5px;color:var(--ink-mute)}
+.shot .cap .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);flex:0 0 auto}
+.panel-feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:16px;margin-top:26px}
+.pfeat{border:1px solid var(--line);border-radius:14px;padding:18px 20px;background:linear-gradient(180deg,var(--panel),var(--bg-2))}
+.pfeat h3{margin:0 0 6px;font-family:var(--mono);font-size:14px;color:var(--cyan-soft)}
+.pfeat p{margin:0;font-size:13.5px;color:var(--ink-soft)}
+.panel-cta{margin-top:24px;font-family:var(--mono);font-size:13.5px;color:var(--ink-soft)}
+.panel-cta code{font-family:var(--mono);color:var(--green-soft);background:rgba(34,197,94,.08);padding:2px 7px;border-radius:6px}
 .cmd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
 .cmd-card{
   border:1px solid var(--line);border-radius:12px;padding:18px 20px;background:var(--bg-2);
@@ -433,6 +446,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <div class="nav-links">
       <a href="#flujo" data-i18n="nav.flow">Flujo</a>
       <a href="#agentes" data-i18n="nav.agents">Agentes</a>
+      <a href="#panel" data-i18n="nav.panel">Panel</a>
       <a href="#comandos" data-i18n="nav.commands">Comandos</a>
       <a href="#ventajas" data-i18n="nav.why">Ventajas</a>
       <a href="#instalacion" data-i18n="nav.install">Instalación</a>
@@ -492,7 +506,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
 
   <div class="stats reveal">
     <div class="stat"><div class="n">7</div><div class="l" data-i18n="stats.agents">Agentes especializados</div></div>
-    <div class="stat"><div class="n">12</div><div class="l">Slash commands</div></div>
+    <div class="stat"><div class="n">15</div><div class="l">Slash commands</div></div>
     <div class="stat"><div class="n">3</div><div class="l" data-i18n="stats.skills">Skills + 2 hooks guardianes</div></div>
     <div class="stat"><div class="n">9</div><div class="l" data-i18n="stats.lab">Vulns de laboratorio</div></div>
   </div>
@@ -692,10 +706,37 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
   </div>
 </section>
 
+<!-- ============ PANEL ============ -->
+<section id="panel">
+  <span class="eyebrow reveal" data-i18n="panel.eyebrow">Observabilidad</span>
+  <h2 class="section-title reveal" data-i18n="panel.title">Un <em>panel vivo</em> de la auditoría</h2>
+  <p class="section-lede reveal" data-i18n="panel.lede">Frontend estático (React por CDN, sin build) que sirves con <code style="font-family:var(--mono);color:var(--green-soft)">python3 -m http.server</code> y hace polling del ledger cada 2s. Mira qué agente trabaja y qué se va encontrando, en tiempo real.</p>
+
+  <div class="shots">
+    <figure class="shot reveal">
+      <img src="assets/panel-overview.png" alt="Panel vivo de vuln-hunter: pipeline, bitacora y hallazgos" loading="lazy" />
+      <figcaption class="cap"><span class="dot"></span><span data-i18n="panel.cap1">Panel completo: pipeline, bitácora viva y hallazgos por estado</span></figcaption>
+    </figure>
+    <figure class="shot reveal">
+      <img src="assets/panel-pipeline.png" alt="Grafo de pipeline estilo GitHub Actions con fork paralelo SAST/INTEL" loading="lazy" />
+      <figcaption class="cap"><span class="dot"></span><span data-i18n="panel.cap2">Grafo tipo GitHub Actions: el agente activo gira; SAST e INTEL en paralelo</span></figcaption>
+    </figure>
+  </div>
+
+  <div class="panel-feats">
+    <div class="pfeat reveal"><h3 data-i18n="panel.f1.h">Pipeline en vivo</h3><p data-i18n="panel.f1.p">Grafo con fork paralelo; el nodo activo gira. Hover sobre cada agente para ver qué hace.</p></div>
+    <div class="pfeat reveal"><h3 data-i18n="panel.f2.h">Bitácora</h3><p data-i18n="panel.f2.p">Timeline estilo terminal de lo que se va encontrando, con severidad y KEV resaltados.</p></div>
+    <div class="pfeat reveal"><h3 data-i18n="panel.f3.h">Hallazgos por estado</h3><p data-i18n="panel.f3.p">Pestañas Encontrados · Mitigando · Arreglados; cada hallazgo se mueve al arreglarse.</p></div>
+    <div class="pfeat reveal"><h3 data-i18n="panel.f4.h">Comandos copiables</h3><p data-i18n="panel.f4.p">Copia el comando de Claude Code para atacar uno o varios hallazgos, ver estado o reanudar.</p></div>
+  </div>
+
+  <p class="panel-cta reveal" data-i18n="panel.cta">Levántalo con <code>/vuln-hunter:panel</code> y déjalo abierto mientras corre la auditoría.</p>
+</section>
+
 <!-- ============ COMANDOS ============ -->
 <section id="comandos">
   <span class="eyebrow reveal" data-i18n="cmd.eyebrow">La consola</span>
-  <h2 class="section-title reveal" data-i18n="cmd.title">12 comandos, <em>flujo guiado</em></h2>
+  <h2 class="section-title reveal" data-i18n="cmd.title">15 comandos, <em>flujo guiado</em></h2>
   <p class="section-lede reveal" data-i18n="cmd.lede">Cada comando termina recomendando el siguiente paso. <code style="font-family:var(--mono);color:var(--amber)">/vuln-hunter:status</code> muestra un dashboard determinista del ledger en cualquier momento.</p>
 
   <div class="cmd-grid">
@@ -711,6 +752,9 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <div class="cmd-card reveal"><span class="cnum">10</span><div class="cbody"><code class="cn">/vuln-hunter:verify</code><div class="cd" data-i18n="cmd.10">Verifica que los fixes cierran las vulnerabilidades sin regresión.</div></div></div>
     <div class="cmd-card reveal"><span class="cnum">11</span><div class="cbody"><code class="cn">/vuln-hunter:report</code><div class="cd" data-i18n="cmd.11">Informe HTML reproducible desde el ledger, con mapeo OWASP y Action Plan.</div></div></div>
     <div class="cmd-card star reveal"><span class="cnum">12</span><div class="cbody"><code class="cn">/vuln-hunter:status</code><div class="cd" data-i18n="cmd.12">Dashboard determinista: progreso, hallazgos por severidad, alerta KEV y siguiente comando.</div></div></div>
+    <div class="cmd-card star reveal"><span class="cnum">13</span><div class="cbody"><code class="cn">/vuln-hunter:panel</code><div class="cd" data-i18n="cmd.13">Levanta el panel administrativo vivo (React+CDN) que lee el ledger y se actualiza por polling.</div></div></div>
+    <div class="cmd-card star reveal"><span class="cnum">14</span><div class="cbody"><code class="cn">/vuln-hunter:resume</code><div class="cd" data-i18n="cmd.14">Reanuda desde donde quedó el run anterior: migra el ledger (retrocompatible) y continúa sin repetir etapas.</div></div></div>
+    <div class="cmd-card reveal"><span class="cnum">15</span><div class="cbody"><code class="cn">/vuln-hunter:rescan</code><div class="cd" data-i18n="cmd.15">Re-escanea SAST un subárbol y fusiona con el ledger; marca como candidato-resuelto lo que ya no aparece.</div></div></div>
   </div>
 </section>
 
@@ -864,6 +908,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
       <h5 data-i18n="foot.nav">Navegar</h5>
       <a href="#flujo" data-i18n="nav.flow">Flujo</a>
       <a href="#agentes" data-i18n="nav.agents">Agentes</a>
+      <a href="#panel" data-i18n="nav.panel">Panel</a>
       <a href="#comandos" data-i18n="nav.commands">Comandos</a>
       <a href="#ventajas" data-i18n="nav.why">Ventajas</a>
       <a href="#instalacion" data-i18n="nav.install">Instalación</a>
@@ -890,7 +935,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
 /* ---------- i18n (ES authored inline, EN from dict) ---------- */
 (function(){
   var EN = {
-    "nav.flow":"Pipeline","nav.agents":"Agents","nav.commands":"Commands","nav.why":"Why","nav.install":"Install",
+    "nav.flow":"Pipeline","nav.agents":"Agents","nav.panel":"Panel","nav.commands":"Commands","nav.why":"Why","nav.install":"Install",
     "hero.badge1":"Defensive &amp; authorized",
     "hero.title":"Hunt. Confirm. <span class=\"accent\">Patch.</span>",
     "hero.sub":"A squad of <b>7 security agents</b> for Claude Code that <b>detects, watches threats, triages, plans, fixes, patches and verifies</b> vulnerabilities across your repo or monorepo — no security theater.",
@@ -931,7 +976,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "ag.fixer.desc":"<b>Root-cause</b> fix on branch <code>vuln-hunter/*</code>. Never commits: waits for human diff approval.",
     "ag.verify.role":"Verification / detection","ag.verify.desc":"Re-scan + tests. If no tests cover the path, it declares <b>PARTIAL</b> verification — it doesn't fake it.","ag.verify.m3":"Honest verification",
     "ag.ledger.role":"Shared state","ag.ledger.desc":"The glue: every agent reads, enriches its sub-object and rewrites. Unifies severity, dedup and the final report.","ag.ledger.m1":"versioned schema","ag.ledger.m2":"no prose between agents",
-    "cmd.eyebrow":"The console","cmd.title":"12 commands, <em>guided flow</em>",
+    "cmd.eyebrow":"The console","cmd.title":"15 commands, <em>guided flow</em>",
     "cmd.lede":'Each command ends by recommending the next step. <code style="font-family:var(--mono);color:var(--amber)">/vuln-hunter:status</code> shows a deterministic ledger dashboard at any time.',
     "cmd.01":"Orchestrates the full flow: recon → scan ∥ watch → red-team → triage → plan → fix → patch → verify.",
     "cmd.02":"Detects the monorepo stacks and bounds the scope (per-package scoping).",
@@ -945,6 +990,18 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "cmd.10":"Verifies the fixes close the vulnerabilities without regression.",
     "cmd.11":"Reproducible HTML report from the ledger, with OWASP mapping and Action Plan.",
     "cmd.12":"Deterministic dashboard: progress, findings by severity, KEV alert and next command.",
+    "cmd.13":"Serves the live admin panel (React+CDN) that reads the ledger and refreshes by polling.",
+    "cmd.14":"Resumes from where the previous run stopped: migrates the ledger (backward-compatible) and continues without repeating stages.",
+    "cmd.15":"Re-scans a subtree with SAST and merges into the ledger; marks as candidate-resolved what no longer appears.",
+    "panel.eyebrow":"Observability","panel.title":"A <em>live panel</em> of the audit",
+    "panel.lede":'Static frontend (React via CDN, no build) served with <code style="font-family:var(--mono);color:var(--green-soft)">python3 -m http.server</code>, polling the ledger every 2s. Watch which agent is working and what is being found, in real time.',
+    "panel.cap1":"Full panel: pipeline, live log and findings by state",
+    "panel.cap2":"GitHub-Actions-style graph: the active agent spins; SAST and INTEL in parallel",
+    "panel.f1.h":"Live pipeline","panel.f1.p":"DAG with a parallel fork; the active node spins. Hover any agent to see what it does.",
+    "panel.f2.h":"Activity log","panel.f2.p":"Terminal-style timeline of what is being found, with severity and KEV highlighted.",
+    "panel.f3.h":"Findings by state","panel.f3.p":"Tabs Found · Mitigating · Fixed; each finding moves across as it gets fixed.",
+    "panel.f4.h":"Copy-paste commands","panel.f4.p":"Copy the Claude Code command to attack one or several findings, check status or resume.",
+    "panel.cta":'Launch it with <code>/vuln-hunter:panel</code> and keep it open while the audit runs.',
     "adv.eyebrow":"Why it matters","adv.title":"Not <em>security theater</em>",
     "adv.lede":"The safeguards are deterministic hooks, not just prompts. Exploitability is confirmed. Nothing closes without evidence.",
     "adv.1.h":"Ransomware prevention","adv.1.p":"A CVE in <b>CISA KEV</b> or with high EPSS in production writes <code>deploy-blocked</code> and stops the deploy. Closes Initial Access (ATT&amp;CK T1190).",

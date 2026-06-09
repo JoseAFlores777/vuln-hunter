@@ -26,9 +26,11 @@ como un profesional de seguridad real.
 
 | Comando | Qué hace |
 |---|---|
-| `/vuln-hunter:hunt [path] [--dry-run] [--solo-deteccion]` | Orquesta el flujo completo |
+| `/vuln-hunter:hunt [path] [--dry-run] [--solo-deteccion]` | Orquesta el flujo completo (auto-detecta y reanuda un run previo) |
+| `/vuln-hunter:resume [path]` | **Reanuda** desde donde quedó el run anterior (migra el ledger, retrocompatible, y continúa la cadena sin repetir etapas) |
 | `/vuln-hunter:detect [path]` | Detecta stacks del monorepo (scoping) |
 | `/vuln-hunter:scan [path]` | SAST de código (delega en sast-analyst) |
+| `/vuln-hunter:rescan <path>` | **Re-escanea** SAST un subárbol y fusiona con el ledger; marca como candidato-resuelto lo que ya no aparece |
 | `/vuln-hunter:watch [lockfile] [--gate]` | **Threat intel de dependencias de producción** (OSV/NVD/KEV/EPSS) |
 | `/vuln-hunter:redteam [VULN\|all]` | Confirma explotabilidad (conceptual) |
 | `/vuln-hunter:triage` | Prioriza (CVSS+EPSS+KEV) |
@@ -135,3 +137,12 @@ ledger; `activity.jsonl` (append-only, escrito por `scripts/activity.py`) es el
 timeline. El panel hace polling cada 2s, asi que muestra los hallazgos y su
 mitigacion en tiempo real mientras corre la auditoria. Ver
 `docs/adr/0001-panel-liveness-architecture.md`.
+
+![Panel vivo de vuln-hunter: pipeline tipo GitHub Actions, bitacora y hallazgos por estado](docs/assets/panel-overview.png)
+
+El grafo de pipeline (estilo GitHub Actions) muestra que agente trabaja, con el
+fork paralelo `scan`/`watch`; la bitacora es el timeline de lo que se va
+encontrando; las pestanias **Encontrados / Mitigando / Arreglados** mueven cada
+hallazgo segun avanza. Para reanudar un run anterior usa `/vuln-hunter:resume`
+(retrocompatible: migra el ledger sin perder estado) y para re-escanear un
+subarbol `/vuln-hunter:rescan <path>`.

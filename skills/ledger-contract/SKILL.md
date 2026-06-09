@@ -29,11 +29,27 @@ al finding existente por su id. NUNCA dupliques un finding ni renumeres.
 > es del **threat-intel-scout**. Asi no se escanea dos veces ni se reconcilia a
 > mano. SAST = codigo propio; SCA/intel = dependencias de terceros.
 
+## Versionado y retrocompatibilidad
+El ledger lleva `schema_version`. La version actual es **1.1**. Un run nuevo debe
+ser RETROCOMPATIBLE con ledgers de versiones anteriores: antes de leer/escribir,
+migra con el helper determinista (sube `schema_version`, rellena defaults y
+preserva todos los findings y su estado, idempotente):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+```
+Para saber por donde iba un run anterior (continuidad), usa:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py resume .vuln-hunter/ledger.json
+```
+Devuelve las etapas completas y el `next_command` de la cadena. Lo consumen
+`/vuln-hunter:resume` y `/vuln-hunter:hunt` (auto-deteccion). Nunca reinicies un
+ledger existente: enriquece sobre el.
+
 ## Inicializacion
 Si `.vuln-hunter/ledger.json` no existe, crea el esqueleto:
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "run": { "started_at": "<ISO>", "scope": "<scope>", "owasp_version": "2025", "branch": "<branch>", "stacks": [] },
   "findings": []
 }

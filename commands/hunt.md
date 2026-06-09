@@ -11,6 +11,7 @@ model: opus
 - Branch actual: !`git branch --show-current 2>/dev/null || echo "(sin git)"`
 - Stacks detectados: !`cat .vuln-hunter/stacks.json 2>/dev/null || echo "ejecuta /vuln-hunter:detect primero"`
 - Estado git: !`git status --short 2>/dev/null | head -20`
+- Auditoria previa: !`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py resume .vuln-hunter/ledger.json 2>/dev/null || echo "ninguna (run nuevo)"`
 
 ## Reglas de esta sesion
 Trabajo DEFENSIVO y AUTORIZADO del codigo propio. El red-team produce solo PoCs
@@ -21,6 +22,19 @@ commitea sin aprobacion humana por hash del diff. Lo imponen agentes y hooks.
 Todos los agentes leen y escriben `.vuln-hunter/ledger.json` segun el skill
 **ledger-contract**. Inicializa el ledger si no existe. No se pasa prosa entre
 agentes: se pasa el ledger.
+
+## Reanudacion y retrocompatibilidad (importante)
+Si YA existe `.vuln-hunter/ledger.json` (ver "Auditoria previa" arriba), NO
+reinicies desde cero:
+1. Migra el ledger al schema actual (preserva findings y estado, es retrocompat):
+   ```
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+   ```
+2. Mira `next_command` de `ledger.py resume`: es donde quedo el run anterior.
+3. Pregunta al usuario (una sola pregunta) si quiere **reanudar** desde ahi o
+   **empezar de cero**. Si reanuda, continua la cadena desde `next_command` sin
+   repetir etapas completas (equivalente a `/vuln-hunter:resume`).
+Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
 
 ## Modos
 - `--dry-run`: ejecuta deteccion, SAST, SCA, red-team y triage, y PRESENTA el
