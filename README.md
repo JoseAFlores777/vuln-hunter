@@ -63,7 +63,7 @@ parchear. Úsalo así:
 
 ## Instalación
 ```bash
-/plugin marketplace add tu-usuario/vuln-hunter
+/plugin marketplace add JoseAFlores777/vuln-hunter
 /plugin install vuln-hunter@vuln-hunter-marketplace
 ```
 **superpowers es OPCIONAL** (mejora el planning). Si lo quieres:
