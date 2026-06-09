@@ -1,7 +1,7 @@
 ---
 description: Cruza las dependencias de PRODUCCION con fuentes oficiales (OSV/NVD/KEV/EPSS) para detectar CVEs recientes y prevenir ransomware (delega en threat-intel-scout)
 argument-hint: [ruta-lockfile-o-paquete] [--gate]
-allowed-tools: Task, Read, Glob, Bash(osv-scanner:*), Bash(trivy:*), Bash(npm:*), Bash(dotnet:*), Bash(pip-audit:*), Bash(ls:*), Bash(cat:*), WebSearch, WebFetch
+allowed-tools: Task, Read, Glob, Bash(osv-scanner:*), Bash(trivy:*), Bash(npm:*), Bash(dotnet:*), Bash(pip-audit:*), Bash(ls:*), Bash(cat:*), WebSearch, WebFetch, Bash(python3:*)
 model: sonnet
 ---
 
@@ -35,3 +35,15 @@ pre-deploy (`deploy-gate.py`) para impedir un release inseguro.
 El agente presenta su resultado con el skill `agent-presentation` (cabecera con
 icono, resumen de 3 lineas, tabla con emoji-semaforo, barra de progreso) y cierra
 con el bloque "▶ Siguiente paso". Si hay KEV/EPSS alto, recomienda `/vuln-hunter:triage` y avisa del bloqueo de deploy.
+
+## Eventos de actividad (panel)
+Emite eventos al timeline del panel en los bordes de esta etapa:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=INTEL agent=threat-intel-scout
+# ... corre el subagente threat-intel-scout ...
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:end stage=INTEL agent=threat-intel-scout summary="<resumen corto>"
+```
+Por cada finding NUEVO agregado al ledger:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py finding:new id=<VULN-2xx> title="<titulo>" source=sca
+```

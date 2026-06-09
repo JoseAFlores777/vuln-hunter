@@ -1,0 +1,16 @@
+{"ts": "2026-06-09T10:00:00", "type": "run:start", "scope": "apps/epos"}
+{"ts": "2026-06-09T10:00:05", "type": "stage:start", "stage": "RECON", "agent": "recon-cartographer"}
+{"ts": "2026-06-09T10:01:10", "type": "stage:end", "stage": "RECON", "agent": "recon-cartographer", "summary": "3 high-risk zones"}
+{"ts": "2026-06-09T10:01:12", "type": "stage:start", "stage": "SAST", "agent": "sast-analyst"}
+{"ts": "2026-06-09T10:03:40", "type": "finding:new", "id": "VULN-101", "title": "SQL injection (raw query)", "source": "sast"}
+{"ts": "2026-06-09T10:03:55", "type": "finding:new", "id": "VULN-102", "title": "XSS via dangerouslySetInnerHTML", "source": "sast"}
+{"ts": "2026-06-09T10:04:00", "type": "stage:end", "stage": "SAST", "agent": "sast-analyst", "summary": "2 findings"}
+{"ts": "2026-06-09T10:04:02", "type": "stage:start", "stage": "INTEL", "agent": "threat-intel-scout"}
+{"ts": "2026-06-09T10:05:30", "type": "finding:new", "id": "VULN-201", "title": "Django 3.2.4 — CVE in CISA KEV", "source": "sca"}
+{"ts": "2026-06-09T10:05:35", "type": "deploy:blocked", "reason": "Django@3.2.4 CVE-2022-28346 in CISA KEV"}
+{"ts": "2026-06-09T10:05:40", "type": "stage:end", "stage": "INTEL", "agent": "threat-intel-scout", "summary": "1 KEV dependency"}
+{"ts": "2026-06-09T10:05:45", "type": "stage:start", "stage": "RED-TEAM", "agent": "redteam-whitehat"}
+{"ts": "2026-06-09T10:07:00", "type": "stage:end", "stage": "RED-TEAM", "agent": "redteam-whitehat", "summary": "2 exploitable, 1 conditional"}
+{"ts": "2026-06-09T10:07:05", "type": "stage:start", "stage": "TRIAGE", "agent": "triage-judge"}
+{"ts": "2026-06-09T10:07:50", "type": "stage:end", "stage": "TRIAGE", "agent": "triage-judge", "summary": "2 P0, 1 P2"}
+{"ts": "2026-06-09T10:08:00", "type": "stage:start", "stage": "FIX", "agent": "appsec-fixer"}

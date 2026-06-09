@@ -1,7 +1,7 @@
 ---
 description: Escanea con SAST+SCA por stack y normaliza hallazgos a SARIF + OWASP Top 10 (delega en sast-analyst)
 argument-hint: [ruta-o-paquete]
-allowed-tools: Task, Read, Grep, Glob, Bash(cat:*)
+allowed-tools: Task, Read, Grep, Glob, Bash(cat:*), Bash(python3:*)
 model: sonnet
 ---
 
@@ -20,3 +20,15 @@ Devuelve el ledger preliminar de hipotesis.
 El agente presenta su resultado con el skill `agent-presentation` (cabecera con
 icono, resumen de 3 lineas, tabla con emoji-semaforo, barra de progreso) y cierra
 con el bloque "▶ Siguiente paso". Tras el SAST, recomienda `/vuln-hunter:redteam all`.
+
+## Eventos de actividad (panel)
+Emite eventos al timeline del panel en los bordes de esta etapa:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=SAST agent=sast-analyst
+# ... corre el subagente sast-analyst ...
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:end stage=SAST agent=sast-analyst summary="<N findings>"
+```
+Por cada finding NUEVO agregado al ledger:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py finding:new id=<VULN-1xx> title="<titulo>" source=sast
+```

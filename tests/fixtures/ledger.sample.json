@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "run": {
+    "started_at": "2026-06-09T10:00:00",
+    "scope": "apps/epos",
+    "owasp_version": "2025",
+    "branch": "vuln-hunter/audit-epos",
+    "stacks": ["python-django", "next-react-ts"]
+  },
+  "attack_surface": {
+    "entrypoints": ["apps/epos/views.py", "apps/epos/api/"],
+    "trust_boundaries": ["HTTP request -> ORM", "user input -> template"],
+    "high_risk_zones": ["raw SQL in reports", "dangerouslySetInnerHTML in dashboard"]
+  },
+  "findings": [
+    {
+      "id": "VULN-101",
+      "source": "sast",
+      "title": "SQL injection (raw query)",
+      "location": "apps/epos/views.py:11",
+      "cwe": "CWE-89",
+      "owasp_2025": "A03:2025-Injection",
+      "sast": {
+        "tool": "semgrep",
+        "rule": "python.django.sql.raw-query",
+        "flow": "SRC request.GET['q'] -> SINK cursor.execute(f\"... {q}\")",
+        "confidence": 9,
+        "hypothesis": "User-controlled q reaches a raw SQL string"
+      },
+      "exploitability": {
+        "verdict": "EXPLOITABLE",
+        "reachable": true,
+        "controllable": true,
+        "conditions": "Authenticated user with report access",
+        "conceptual_chain": [
+          "Attacker sends q=1' OR '1'='1",
+          "String interpolated into SQL with no parameterization",
+          "Query returns all rows -> data exfiltration"
+        ],
+        "confidence_adjusted": 9
+      },
+      "triage": {
+        "cvss": 8.6,
+        "cvss_version": "4.0",
+        "priority": "P0",
+        "rationale": "Reachable, controllable, high impact on confidentiality"
+      },
+      "fix": {
+        "root_cause": "String interpolation into raw SQL",
+        "files_touched": ["apps/epos/views.py"],
+        "asvs": "V5.3.4",
+        "summary": "Use parameterized query with placeholder",
+        "applied": true
+      },
+      "verification": {
+        "rescan_clear": true,
+        "tests_pass": true,
+        "no_new_findings": true,
+        "verdict": "CLOSED",
+        "evidence": "semgrep re-scan clean; test_report_injection passes"
+      },
+      "status": "closed"
+    },
+    {
+      "id": "VULN-102",
+      "source": "sast",
+      "title": "XSS via dangerouslySetInnerHTML",
+      "location": "apps/epos/dashboard/page.jsx:4",
+      "cwe": "CWE-79",
+      "owasp_2025": "A03:2025-Injection",
+      "sast": {
+        "tool": "eslint-security",
+        "rule": "react/no-danger",
+        "flow": "SRC props.note -> SINK dangerouslySetInnerHTML",
+        "confidence": 7,
+        "hypothesis": "Unsanitized note rendered as HTML"
+      },
+      "exploitability": {
+        "verdict": "CONDITIONAL",
+        "reachable": true,
+        "controllable": true,
+        "conditions": "Requires stored note with script payload",
+        "conceptual_chain": [
+          "Attacker stores a note with <img onerror>",
+          "Dashboard renders it via dangerouslySetInnerHTML",
+          "Script executes in victim session"
+        ],
+        "confidence_adjusted": 7
+      },
+      "triage": {
+        "cvss": 6.1,
+        "cvss_version": "4.0",
+        "priority": "P2",
+        "rationale": "Stored XSS but limited to authenticated dashboard"
+      },
+      "fix": {
+        "root_cause": "Rendering untrusted HTML",
+        "files_touched": ["apps/epos/dashboard/page.jsx"],
+        "asvs": "V5.3.3",
+        "summary": "Render as text or sanitize with DOMPurify",
+        "applied": true
+      },
+      "status": "fixed"
+    },
+    {
+      "id": "VULN-201",
+      "source": "sca",
+      "title": "Django 3.2.4 — CVE in CISA KEV",
+      "location": "Django@3.2.4",
+      "cwe": "CWE-1395",
+      "owasp_2025": "A06:2025-Vulnerable and Outdated Components",
+      "intel": {
+        "package": "Django",
+        "installed_version": "3.2.4",
+        "ecosystem": "PyPI",
+        "is_production_dep": true,
+        "cve_ids": ["CVE-2022-28346"],
+        "ghsa_ids": ["GHSA-2gwj-7jmv-h26r"],
+        "in_cisa_kev": true,
+        "known_ransomware_use": false,
+        "epss": 0.71,
+        "fixed_version": "3.2.13",
+        "sources_consulted": ["OSV.dev", "NVD", "CISA KEV", "FIRST EPSS"]
+      },
+      "triage": {
+        "cvss": 9.8,
+        "cvss_version": "3.1",
+        "priority": "P0",
+        "rationale": "Production dep, in CISA KEV, high EPSS -> deploy blocker"
+      },
+      "status": "triaged"
+    }
+  ],
+  "plan_ref": ".vuln-hunter/plan.md"
+}

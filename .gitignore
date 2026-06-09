@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# vuln-hunter runtime state (per-audit, not source)
+.vuln-hunter/
+
+# macOS
+.DS_Store

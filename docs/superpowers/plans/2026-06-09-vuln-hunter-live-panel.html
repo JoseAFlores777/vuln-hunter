@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>vuln-hunter Live Panel — Implementation Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#f4f1ea;--paper-2:#ece7dd;
+    --ink:#1a1915;--ink-soft:#3a3833;--ink-mute:#6f6a60;
+    --rule:#d8d2c4;--accent:#c96442;--accent-soft:#e8a48a;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;line-height:1.65;font-size:16px}
+  .container{max-width:980px;margin:0 auto;padding:64px 32px 96px}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+  h1{font-family:'Tinos',serif;font-weight:700;font-size:56px;line-height:1.05;margin:0 0 22px;letter-spacing:-.01em}
+  h1 em{font-style:italic;color:var(--accent)}
+  .lede{font-size:20px;color:var(--ink-soft);max-width:70ch;margin:0 0 26px}
+  .meta{display:flex;gap:26px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink-mute);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:16px 0;margin-bottom:8px}
+  .meta b{color:var(--ink-soft);font-weight:500}
+  nav.toc{margin:44px 0 12px}
+  nav.toc h2{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 14px}
+  nav.toc ol{list-style:none;margin:0;padding:0;columns:2;column-gap:48px}
+  nav.toc li{margin:0 0 9px;break-inside:avoid}
+  nav.toc a{text-decoration:none;color:var(--ink-soft);font-size:15px;display:flex;gap:12px;align-items:baseline;border-bottom:1px solid transparent;width:fit-content}
+  nav.toc a:hover{border-bottom-color:var(--accent)}
+  nav.toc .n{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)}
+  section{padding:40px 0;border-bottom:1px solid var(--rule)}
+  section h2{font-family:'Tinos',serif;font-size:32px;font-weight:700;margin:0 0 6px;display:flex;align-items:baseline;gap:14px;scroll-margin-top:24px}
+  .num{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent);font-weight:500}
+  .section-lede{color:var(--ink-mute);font-size:16px;margin:0 0 22px;max-width:72ch}
+  h3{font-family:'Inter',sans-serif;font-weight:600;font-size:18px;margin:26px 0 8px;color:var(--ink)}
+  p{margin:0 0 14px}
+  ul,ol{margin:0 0 16px;padding-left:22px}
+  li{margin:0 0 7px}
+  code{font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--paper-2);padding:1.5px 6px;border-radius:5px}
+  pre{background:#23211c;color:#e9e3d4;border-radius:12px;padding:18px 20px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.6;margin:0 0 18px}
+  pre code{background:none;padding:0;font-size:13px;color:inherit}
+  pre .c{color:#8d8678}.pre .k,pre .k{color:#e8a48a}pre .s{color:#b7c79a}
+  table{width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-mute);background:var(--paper-2)}
+  td code{font-size:.82em}
+  .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 8px;border-radius:5px;background:var(--accent);color:#fff}
+  .tag.alt{background:var(--paper-2);color:var(--ink-soft);border:1px solid var(--rule)}
+  .callout{background:#fbf2ec;border-left:3px solid var(--accent);border-radius:8px;padding:14px 18px;margin:0 0 18px;font-size:14.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  footer{margin-top:48px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-mute)}
+  .copy{float:right;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-mute);background:none;border:1px solid var(--rule);border-radius:6px;padding:3px 9px;cursor:pointer}
+  .copy:hover{border-color:var(--accent);color:var(--accent)}
+  @media(max-width:760px){
+    .container{padding:40px 20px 64px}
+    h1{font-size:38px}
+    nav.toc ol{columns:1}
+    .grid2{grid-template-columns:1fr}
+    .meta{gap:14px}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <div class="eyebrow">vuln-hunter · implementation plan</div>
+    <h1>Panel <em>vivo</em> de auditoría</h1>
+    <p class="lede">Un panel administrativo estático (React por CDN, sin build ni instalación) que lee el ledger y un nuevo registro de actividad, y se actualiza solo para que el usuario vea aparecer las vulnerabilidades y cómo se van mitigando — en tiempo real.</p>
+    <div class="meta">
+      <span><b>Fecha:</b> 2026-06-09</span>
+      <span><b>Status:</b> listo para ejecutar</span>
+      <span><b>Scope:</b> un repo / panel estático + activity.jsonl</span>
+      <span><b>Fuente:</b> <code>2026-06-09-vuln-hunter-live-panel.md</code></span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#s01"><span class="n">01</span> Objetivo y arquitectura</a></li>
+      <li><a href="#s02"><span class="n">02</span> Decisiones (grilling)</a></li>
+      <li><a href="#s03"><span class="n">03</span> Estructura de archivos</a></li>
+      <li><a href="#s04"><span class="n">04</span> Contrato de eventos</a></li>
+      <li><a href="#s05"><span class="n">05</span> Tareas</a></li>
+      <li><a href="#s06"><span class="n">06</span> Verificación</a></li>
+      <li><a href="#s07"><span class="n">07</span> Self-review</a></li>
+    </ol>
+  </nav>
+
+  <section id="s01">
+    <h2><span class="num">§ 01</span>Objetivo y arquitectura</h2>
+    <p class="section-lede">Qué construye y con qué forma.</p>
+    <p><b>Objetivo.</b> Un panel React vía CDN que lee <code>.vuln-hunter/ledger.json</code> + un nuevo <code>.vuln-hunter/activity.jsonl</code> y auto-refresca, para que el usuario observe en vivo los hallazgos y su mitigación, servido con <code>python3 -m http.server</code>.</p>
+    <p><b>Arquitectura.</b> Contrato de dos archivos — el <em>ledger</em> sigue siendo la única verdad de estado (findings, statuses, mitigación); un nuevo <em>activity.jsonl</em> append-only lleva el timeline de eventos. Un helper compartido <code>scripts/activity.py</code> hace append; cada comando de etapa lo llama en sus bordes. Un solo <code>panel/index.html</code> (React 18 + Babel standalone por CDN, cero build) hace polling de ambos archivos cada 2s y renderiza una página única con filas de finding expandibles.</p>
+    <div class="callout"><b>Límite de liveness.</b> Los subagentes <code>Task</code> son opacos: el hilo principal no recibe nada hasta que retornan. Por eso "vivo" es por-etapa y por-finding, no token a token. Documentado en <code>docs/adr/0001-panel-liveness-architecture.md</code>.</div>
+    <p><b>Tech stack.</b> Python 3 stdlib (<code>activity.py</code>, <code>unittest</code>, <code>http.server</code>), React 18 UMD + <code>@babel/standalone</code> por unpkg, CSS plano con la paleta del kit.</p>
+  </section>
+
+  <section id="s02">
+    <h2><span class="num">§ 02</span>Decisiones (grilling)</h2>
+    <p class="section-lede">Las bifurcaciones resueltas durante la entrevista, que fijan la forma del plan.</p>
+    <table>
+      <thead><tr><th>Decisión</th><th>Resolución</th></tr></thead>
+      <tbody>
+        <tr><td>Alcance</td><td>Un solo proyecto; "por proyecto" = por scope/paquete del repo</td></tr>
+        <tr><td>Liveness</td><td>Real, pero a granularidad etapa+finding (Task subagents opacos)</td></tr>
+        <tr><td>Eventos</td><td>Orquestador → <code>.vuln-hunter/activity.jsonl</code> (append-only)</td></tr>
+        <tr><td>Servido</td><td><code>http.server</code> + polling 2s, comando <code>/vuln-hunter:panel</code></td></tr>
+        <tr><td>vs report.py</td><td>Complementarios; <code>report.py</code> intacto</td></tr>
+        <tr><td>Configurable</td><td>Data-driven por el ledger; sin settings file</td></tr>
+        <tr><td>Tipos de evento</td><td><code>stage:start/end</code>, <code>finding:new</code>, <code>deploy:blocked</code>, <code>run:start/done</code></td></tr>
+        <tr><td>Estado vs eventos</td><td>ledger = verdad de estado; activity = timeline + agente-corriendo</td></tr>
+        <tr><td>Layout</td><td>Single-page, filas de finding expandibles</td></tr>
+        <tr><td>Instrumentación</td><td><code>scripts/activity.py</code> compartido en todos los comandos</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="s03">
+    <h2><span class="num">§ 03</span>Estructura de archivos</h2>
+    <p class="section-lede">Dónde vive cada responsabilidad.</p>
+    <table>
+      <thead><tr><th>Archivo</th><th>Responsabilidad</th></tr></thead>
+      <tbody>
+        <tr><td><code>scripts/activity.py</code> <span class="tag">crear</span></td><td>Logger append-only de eventos JSONL. CLI <code>activity.py &lt;type&gt; [k=v …]</code>. Stdlib puro, testeable.</td></tr>
+        <tr><td><code>tests/test_activity.py</code> <span class="tag">crear</span></td><td><code>unittest</code> del logger (parse, append, validación, creación de dir).</td></tr>
+        <tr><td><code>tests/fixtures/ledger.sample.json</code> <span class="tag">crear</span></td><td>Ledger poblado realista para verificar el panel.</td></tr>
+        <tr><td><code>tests/fixtures/activity.sample.jsonl</code> <span class="tag">crear</span></td><td>Timeline de eventos correspondiente.</td></tr>
+        <tr><td><code>tests/test_panel_contract.py</code> <span class="tag">crear</span></td><td>Smoke test: forma del fixture + el HTML referencia los fetch/componentes esperados.</td></tr>
+        <tr><td><code>panel/index.html</code> <span class="tag">crear</span></td><td>El panel: app React CDN, polling, página única, filas expandibles.</td></tr>
+        <tr><td><code>commands/panel.md</code> <span class="tag">crear</span></td><td><code>/vuln-hunter:panel</code> — copia el panel a <code>.vuln-hunter/</code>, sirve, abre el navegador.</td></tr>
+        <tr><td><code>commands/detect.md</code>, <code>hunt.md</code> <span class="tag alt">modificar</span></td><td>Emiten <code>run:start/done</code> + <code>stage:*</code> + <code>finding:new</code> + <code>deploy:blocked</code>.</td></tr>
+        <tr><td><code>commands/{scan,watch,redteam,triage,plan,fix,verify}.md</code> <span class="tag alt">modificar</span></td><td>Cada etapa solo emite sus propios eventos.</td></tr>
+        <tr><td><code>README.md</code> <span class="tag alt">modificar</span></td><td>Documenta el comando del panel.</td></tr>
+      </tbody>
+    </table>
+    <h3>Claves canónicas de etapa</h3>
+    <p>Deben coincidir EXACTO entre <code>activity.py</code>, las tablas de emisión y la tabla <code>STAGES</code> del panel:</p>
+    <pre><code>detect · RECON · SAST · INTEL · RED-TEAM · TRIAGE · plan · FIX · VERIFY</code></pre>
+  </section>
+
+  <section id="s04">
+    <h2><span class="num">§ 04</span>Contrato de eventos</h2>
+    <p class="section-lede">El split estado/eventos y los únicos tipos válidos.</p>
+    <p>El <code>ledger</code> guarda la verdad de estado; <code>activity.jsonl</code> es solo el timeline. El panel <em>deriva</em> el estado de cada agente (idle/running/done) del último <code>stage:*</code> de su etapa, y lee la mitigación directo del ledger.</p>
+    <pre><code><span class="c"># una línea JSON por evento; tipos válidos:</span>
+run:start      {scope}
+run:done       {}
+stage:start    {stage, agent?}
+stage:end      {stage, agent?, summary?}
+finding:new    {id, title, source}
+deploy:blocked {reason}</code></pre>
+    <div class="callout">El estado de los agentes y los cambios de status de los findings <b>no se duplican</b> en eventos: se derivan del ledger. Así <code>activity.jsonl</code> no compite con el contrato que ya consumen los 7 agentes.</div>
+  </section>
+
+  <section id="s05">
+    <h2><span class="num">§ 05</span>Tareas</h2>
+    <p class="section-lede">8 tareas TDD, pasos bite-sized. El detalle completo (con todo el código) vive en el <code>.md</code>; aquí el mapa.</p>
+
+    <h3>Task 1 — Logger de eventos (<code>scripts/activity.py</code>)</h3>
+    <p>TDD con <code>unittest</code>: parseo <code>k=v</code>, append JSONL con <code>ts</code>+<code>type</code>, validación de tipo, creación de dir. Núcleo:</p>
+    <pre><code><span class="k">def</span> append_event(event_type, fields, path):
+    <span class="k">if</span> event_type <span class="k">not in</span> EVENT_TYPES:
+        <span class="k">return</span> 2
+    rec = {<span class="s">"ts"</span>: datetime.now().isoformat(timespec=<span class="s">"seconds"</span>), <span class="s">"type"</span>: event_type}
+    rec.update(fields)
+    os.makedirs(os.path.dirname(path) <span class="k">or</span> <span class="s">"."</span>, exist_ok=<span class="k">True</span>)
+    <span class="k">with</span> open(path, <span class="s">"a"</span>) <span class="k">as</span> fh:
+        fh.write(json.dumps(rec, ensure_ascii=<span class="k">False</span>) + <span class="s">"\n"</span>)
+    <span class="k">return</span> 0</code></pre>
+
+    <h3>Task 2 — Fixtures de verificación</h3>
+    <p>Un ledger mid-audit (1 cerrada, 1 corregida-pendiente, 1 P0 KEV) + un <code>activity.jsonl</code> que se detiene en mitad de <code>FIX</code> (un <code>stage:start</code> sin <code>stage:end</code>) para que el panel muestre <code>appsec-fixer</code> como <b>running</b>.</p>
+
+    <h3>Task 3 — El panel (<code>panel/index.html</code>)</h3>
+    <p>App React CDN de un archivo. Componentes: <code>SummaryCards</code>, <code>PipelineBar</code>, <code>AgentRoster</code>, <code>FindingsTable</code> (filas expandibles), <code>ActivityTimeline</code>. Polling 2s con cache-busting; deriva estado de agentes; ensambla la explicación de cada finding desde los sub-objetos del ledger. Verificación visual contra los fixtures con observaciones explícitas (pipeline FIX ● running, roster appsec-fixer running, etc.).</p>
+
+    <h3>Task 4 — Comando lanzador (<code>commands/panel.md</code>)</h3>
+    <pre><code>(python3 -m http.server ${ARGUMENTS:-8765} --directory .vuln-hunter &) ; \
+  sleep 1 ; open "http://localhost:${ARGUMENTS:-8765}/index.html"</code></pre>
+
+    <h3>Task 5 — Instrumentar orquestador (<code>hunt.md</code> + <code>detect.md</code>)</h3>
+    <p>Añade <code>Bash(python3:*)</code> a <code>allowed-tools</code> y una sección que emite eventos en los bordes de cada etapa, <code>run:start</code> al inicio y <code>run:done</code> al final.</p>
+
+    <h3>Task 6 — Instrumentar comandos de etapa solos</h3>
+    <p>Para que el timeline funcione también corriendo etapas sueltas. Tabla (file → stage → agent) + plantilla exacta + ejemplo concreto para <code>scan.md</code>.</p>
+
+    <h3>Task 7 — Documentar (<code>README.md</code>)</h3>
+    <p>Entrada para <code>/vuln-hunter:panel</code> y una frase de arquitectura apuntando al ADR.</p>
+
+    <h3>Task 8 — Verificación end-to-end</h3>
+    <p>Suite completa de tests + simular una auditoría viva (escribir eventos reales con <code>activity.py</code> y ver el panel actualizar en ~2s sin recargar) + chequeo de estado vacío.</p>
+  </section>
+
+  <section id="s06">
+    <h2><span class="num">§ 06</span>Verificación</h2>
+    <p class="section-lede">Evidencia, no afirmaciones (CLAUDE.md §9: verificación honesta).</p>
+    <ul>
+      <li><b>Unit:</b> <code>python3 tests/test_activity.py -v</code> — 6 tests del logger.</li>
+      <li><b>Contrato:</b> <code>python3 tests/test_panel_contract.py -v</code> — forma de fixtures + el HTML referencia <code>ledger.json</code>, <code>activity.jsonl</code>, React/Babel CDN, <code>setInterval</code> y los 4 componentes.</li>
+      <li><b>Visual:</b> servir fixtures con <code>http.server</code> y observar pipeline/roster/tabla/timeline (lista de observaciones esperadas en el <code>.md</code>).</li>
+      <li><b>End-to-end:</b> append de eventos reales → el panel cambia en ~2s sin recargar.</li>
+      <li><b>Estado vacío:</b> sin ledger → mensaje guía, no crash.</li>
+    </ul>
+    <div class="callout">El JS en navegador no se unit-testea (sin Node, por diseño "sin instalar nada"). Esa cobertura es <b>verificación visual/manual con observaciones explícitas</b> — declarada como tal, no fingida.</div>
+  </section>
+
+  <section id="s07">
+    <h2><span class="num">§ 07</span>Self-review</h2>
+    <p class="section-lede">Cobertura del diseño resuelto contra las tareas.</p>
+    <ul>
+      <li>Un proyecto / por scope → header del panel. ✔</li>
+      <li>Actividad viva de agentes → AgentRoster + activity.jsonl + emisión del orquestador. ✔</li>
+      <li>Orquestador → activity.jsonl append-only → helper + instrumentación. ✔</li>
+      <li>http.server + polling → comando + <code>setInterval</code> 2s. ✔</li>
+      <li>Complementario a report.py → report.py intacto. ✔</li>
+      <li>Data-driven sin settings → un solo index.html. ✔</li>
+      <li>Taxonomía de eventos → <code>EVENT_TYPES</code> + docs de emisión. ✔</li>
+      <li>Split estado/eventos → ledger=verdad, activity=timeline. ✔</li>
+      <li>Single-page expandible → FindingsTable con toggle. ✔</li>
+      <li>Helper en todos los comandos → Tasks 5 + 6. ✔</li>
+    </ul>
+    <p><b>Git:</b> cada paso de commit está condicionado a autorización explícita del usuario (CLAUDE.md). Sin commits autónomos, sin trailer <code>Co-Authored-By</code>.</p>
+  </section>
+
+  <footer>vuln-hunter · live panel plan · v0.1 — 2026-06-09 · companion de <code>2026-06-09-vuln-hunter-live-panel.md</code></footer>
+
+</div>
+<script>
+  document.querySelectorAll('pre').forEach(function(pre){
+    var b=document.createElement('button');b.className='copy';b.textContent='copy';
+    b.onclick=function(){navigator.clipboard.writeText(pre.innerText.replace(/\ncopy$/,''));b.textContent='copied';setTimeout(function(){b.textContent='copy'},1200);};
+    pre.insertBefore(b,pre.firstChild);
+  });
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 ---
 description: Genera el plan de remediacion. Usa el motor de planning de superpowers si esta instalado; si no, genera un plan propio por prioridad.
 argument-hint:
-allowed-tools: Task, Skill, Read, Write, TodoWrite
+allowed-tools: Task, Skill, Read, Write, TodoWrite, Bash(python3:*)
 model: opus
 ---
 
@@ -31,3 +31,11 @@ tests escritos ANTES del codigo, ordenado por prioridad (P0 -> P3).
    ```
 
 El plan es la entrada del appsec-fixer.
+
+## Eventos de actividad (panel)
+Emite eventos al timeline del panel en los bordes de esta etapa:
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=plan
+# ... genera el plan ...
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:end stage=plan summary="<resumen corto>"
+```

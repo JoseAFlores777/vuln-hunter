@@ -1,7 +1,7 @@
 ---
 description: Orquesta el flujo completo de seguridad recon -> scan(SAST) + watch(SCA) -> red-team -> triage -> plan -> fix -> patch -> verify sobre el repo o un paquete
 argument-hint: [ruta-o-paquete] [--solo-deteccion] [--dry-run]
-allowed-tools: Task, Read, Grep, Glob, Bash(git:*), Bash(mkdir:*), Write, TodoWrite, WebSearch, WebFetch
+allowed-tools: Task, Read, Grep, Glob, Bash(git:*), Bash(mkdir:*), Bash(python3:*), Write, TodoWrite, WebSearch, WebFetch
 model: opus
 ---
 
@@ -61,3 +61,46 @@ Y respeta el skill `agent-presentation`: cada agente abre con su cabecera
 progreso y bloque "▶ Siguiente paso". Cuando necesites una decision del usuario,
 usa el formato de pregunta unica enumerada del skill (o la herramienta de
 opciones interactivas si esta disponible) — nunca mas de una pregunta a la vez.
+
+## Eventos de actividad (alimentan el panel vivo)
+Ademas del dashboard de texto, emite eventos al timeline del panel con el helper
+`scripts/activity.py`. Hazlo en los BORDES de cada etapa (no dentro del agente):
+
+- Al iniciar TODO el flujo, una vez:
+  ```
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py run:start scope="<scope o repo>"
+  ```
+- Antes de lanzar cada subagente: `stage:start`; al volver: `stage:end`. Usa estas
+  claves de etapa EXACTAS y su agente:
+  | stage | agent |
+  |---|---|
+  | RECON | recon-cartographer |
+  | SAST | sast-analyst |
+  | INTEL | threat-intel-scout |
+  | RED-TEAM | redteam-whitehat |
+  | TRIAGE | triage-judge |
+  | FIX | appsec-fixer |
+  | VERIFY | verify-engineer |
+
+  Ejemplo:
+  ```
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=SAST agent=sast-analyst
+  # ... corre el subagente ...
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:end stage=SAST agent=sast-analyst summary="<N findings>"
+  ```
+- Por cada finding NUEVO que un agente agregue al ledger:
+  ```
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py finding:new id=VULN-101 title="<titulo>" source=sast
+  ```
+- Si el triage escribe `.vuln-hunter/deploy-blocked`:
+  ```
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py deploy:blocked reason="<paquete@version CVE en KEV>"
+  ```
+- Las etapas `detect` y `plan` no tienen subagente; emite igual `stage:start`/
+  `stage:end` con `stage=detect` y `stage=plan`.
+- Al terminar TODO el flujo, una vez:
+  ```
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py run:done
+  ```
+
+Sugiere al usuario abrir el panel con `/vuln-hunter:panel` para verlo en vivo.

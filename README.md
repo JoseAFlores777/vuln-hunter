@@ -38,6 +38,7 @@ como un profesional de seguridad real.
 | `/vuln-hunter:verify [VULN\|all]` | Verifica cierre sin regresión |
 | `/vuln-hunter:report [salida.html]` | Informe HTML reproducible desde el ledger |
 | `/vuln-hunter:status` | **Dashboard**: progreso del flujo, hallazgos y siguiente comando |
+| `/vuln-hunter:panel [puerto]` | **Panel vivo** (React+CDN, estático): lee `.vuln-hunter/ledger.json` + `activity.jsonl` y se actualiza por polling cada 2s para ver hallazgos y su mitigación en tiempo real |
 
 ## Flujo
 
@@ -127,3 +128,10 @@ En cualquier momento, `/vuln-hunter:status` muestra un **dashboard determinista*
 donde estas en el flujo, los hallazgos por severidad, la alerta de KEV y el
 siguiente comando recomendado. Las decisiones se piden con preguntas unicas y
 enumeradas (una a la vez), o con botones si el entorno los soporta.
+
+Para verlo en vivo, `/vuln-hunter:panel` levanta un frontend estatico (sin build,
+sin instalar nada) servido con `python3 -m http.server`. La verdad de estado es el
+ledger; `activity.jsonl` (append-only, escrito por `scripts/activity.py`) es el
+timeline. El panel hace polling cada 2s, asi que muestra los hallazgos y su
+mitigacion en tiempo real mientras corre la auditoria. Ver
+`docs/adr/0001-panel-liveness-architecture.md`.

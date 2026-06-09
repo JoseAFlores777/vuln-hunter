@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>vuln-hunter — Panel vivo</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root{
+    --paper:#f4f1ea;--card:#fff;--ink:#1a1915;--mute:#8a847a;--rule:#ddd8cc;
+    --p0:#b4532f;--p1:#c0772f;--p2:#c89a3c;--p3:#6b7d5c;--filt:#8a847a;
+    --run:#c0772f;--done:#6b7d5c;--idle:#bdb7a9;
+  }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--paper);color:var(--ink);margin:0;line-height:1.5}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
+  h1{font-size:1.7rem;margin:0 0 4px}
+  .sub{color:var(--mute);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;margin-bottom:22px}
+  .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--run);margin-right:6px;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start}
+  .cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:14px 20px;min-width:84px;text-align:center}
+  .card .num{font-size:1.6rem;font-weight:700}
+  .card .lbl{font-family:ui-monospace,monospace;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+  .kev{background:#fdf0ec;border-left:4px solid var(--p0);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:14px}
+  .panelbox{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+  .panelbox h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 12px}
+  .roster{display:flex;gap:10px;flex-wrap:wrap}
+  .agent{display:flex;align-items:center;gap:8px;border:1px solid var(--rule);border-radius:999px;padding:6px 12px;font-size:13px}
+  .agent .dot{width:9px;height:9px;border-radius:50%}
+  .agent.running{border-color:var(--run);background:#fbf2e9}
+  .agent.running .dot{background:var(--run);animation:pulse 1.4s infinite}
+  .agent.done .dot{background:var(--done)}
+  .agent.idle{color:var(--mute)}
+  .agent.idle .dot{background:var(--idle)}
+  .pipe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:ui-monospace,monospace;font-size:12.5px}
+  .pipe .step{padding:3px 9px;border-radius:6px;border:1px solid var(--rule)}
+  .pipe .step.done{background:#eef1e9;border-color:#cfd8c2}
+  .pipe .step.running{background:#fbf2e9;border-color:var(--run);font-weight:700}
+  .pipe .arrow{color:var(--mute)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--rule);border-radius:12px;overflow:hidden;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #eee7d8;vertical-align:top}
+  th{background:#faf8f2;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute)}
+  tr.frow{cursor:pointer}
+  tr.frow:hover{background:#faf8f2}
+  code{background:rgba(107,125,92,.12);padding:1px 5px;border-radius:4px;font-size:.85em}
+  .badge{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#fff}
+  .pill{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;border:1px solid var(--rule);color:var(--mute)}
+  .detail{background:#fbf9f3}
+  .detail dl{margin:0;display:grid;grid-template-columns:140px 1fr;gap:6px 14px;font-size:13px}
+  .detail dt{color:var(--mute);font-family:ui-monospace,monospace;font-size:11.5px;text-transform:uppercase}
+  .detail dd{margin:0}
+  .detail ol{margin:4px 0 0;padding-left:20px}
+  .timeline{max-height:70vh;overflow:auto}
+  .ev{display:flex;gap:8px;font-size:12.5px;padding:6px 0;border-bottom:1px solid #eee7d8}
+  .ev .t{color:var(--mute);font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap}
+  .empty{color:var(--mute);text-align:center;padding:40px;font-size:14px}
+  footer{margin-top:24px;color:var(--mute);font-size:11.5px;font-family:ui-monospace,monospace}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,Fragment} = React;
+
+// Etapas canonicas (la clave 'key' DEBE coincidir con activity.py y la presentacion)
+const STAGES = [
+  {key:"detect",   label:"detect",   icon:"🧭", agent:null,                  done:(L)=> (L.run&&L.run.stacks||[]).length>0},
+  {key:"RECON",    label:"RECON",    icon:"🛰", agent:"recon-cartographer",  done:(L)=> !!L.attack_surface},
+  {key:"SAST",     label:"SAST",     icon:"🔬", agent:"sast-analyst",        done:(L)=> (L.findings||[]).some(f=>f.sast)},
+  {key:"INTEL",    label:"INTEL",    icon:"📡", agent:"threat-intel-scout",  done:(L)=> (L.findings||[]).some(f=>f.intel)},
+  {key:"RED-TEAM", label:"RED-TEAM", icon:"🎯", agent:"redteam-whitehat",    done:(L)=> (L.findings||[]).some(f=>f.exploitability)},
+  {key:"TRIAGE",   label:"TRIAGE",   icon:"⚖️", agent:"triage-judge",        done:(L)=> (L.findings||[]).some(f=>f.triage)},
+  {key:"plan",     label:"plan",     icon:"🗺", agent:null,                  done:(L)=> !!L.plan_ref},
+  {key:"FIX",      label:"FIX",      icon:"🔧", agent:"appsec-fixer",        done:(L)=> (L.findings||[]).some(f=>f.fix)},
+  {key:"VERIFY",   label:"VERIFY",   icon:"✅", agent:"verify-engineer",     done:(L)=> (L.findings||[]).some(f=>f.verification)},
+];
+
+const PRIO = {P0:"#b4532f",P1:"#c0772f",P2:"#c89a3c",P3:"#6b7d5c",FILTERED:"#8a847a"};
+const PRIO_ORDER = {P0:0,P1:1,P2:2,P3:3,FILTERED:9};
+const STATUS_LABEL = {hypothesis:"Hipotesis",confirmed:"Confirmada",triaged:"Triada",planned:"Planificada",fixed:"Corregida",closed:"Cerrada",filtered:"Filtrada"};
+
+async function fetchJSON(url){
+  const r = await fetch(url + "?t=" + Date.now());
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function fetchJSONL(url){
+  const r = await fetch(url + "?t=" + Date.now());
+  if(!r.ok) return [];
+  const txt = await r.text();
+  return txt.split("\n").filter(l=>l.trim()).map(l=>{ try{return JSON.parse(l)}catch(e){return null} }).filter(Boolean);
+}
+
+// Ultimo evento stage:start/stage:end de una etapa (o null si no hubo ninguno).
+function lastStageEvent(stageKey, activity){
+  const evs = activity.filter(e=>(e.type==="stage:start"||e.type==="stage:end") && e.stage===stageKey);
+  return evs[evs.length-1] || null;
+}
+// Indice de la etapa que esta corriendo ahora (ultimo evento = stage:start). -1 si ninguna.
+function runningStageIndex(activity){
+  let r = -1;
+  STAGES.forEach((s,i)=>{ const last=lastStageEvent(s.key,activity); if(last && last.type==="stage:start") r=Math.max(r,i); });
+  return r;
+}
+// Estado de una etapa. La actividad es la verdad viva: si hay evento, manda. Sin
+// eventos, cae al ledger, PERO nunca marca "done" una etapa posterior a la que
+// esta corriendo (evita el contradictorio "FIX corriendo / VERIFY hecho").
+function stageStatus(stage, idx, activity, ledger, runningIdx){
+  const last = lastStageEvent(stage.key, activity);
+  if(last) return last.type==="stage:start" ? "running" : "done";
+  if(runningIdx>=0 && idx>runningIdx) return "idle";
+  return stage.done(ledger) ? "done" : "idle";
+}
+
+function SummaryCards({findings}){
+  const counts = {}; let kev=0;
+  findings.forEach(f=>{
+    const p = (f.triage||{}).priority || "—";
+    counts[p] = (counts[p]||0)+1;
+    if((f.intel||{}).in_cisa_kev) kev++;
+  });
+  const order = Object.keys(counts).sort((a,b)=>(PRIO_ORDER[a]??5)-(PRIO_ORDER[b]??5));
+  return (
+    <div className="cards">
+      <div className="card"><div className="num">{findings.length}</div><div className="lbl">Hallazgos</div></div>
+      {order.map(p=>(
+        <div className="card" key={p}><div className="num" style={{color:PRIO[p]||"#1a1915"}}>{counts[p]}</div><div className="lbl">{p}</div></div>
+      ))}
+      <div className="card"><div className="num" style={{color:"#b4532f"}}>{kev}</div><div className="lbl">CISA KEV</div></div>
+    </div>
+  );
+}
+
+function AgentRoster({activity,ledger}){
+  const runningIdx = runningStageIndex(activity);
+  const items = STAGES.map((s,i)=>({s,i})).filter(x=>x.s.agent);
+  return (
+    <div className="panelbox">
+      <h2>Agentes</h2>
+      <div className="roster">
+        {items.map(({s,i})=>{
+          const st = stageStatus(s, i, activity, ledger, runningIdx);
+          return (
+            <div className={"agent "+st} key={s.key} title={s.agent}>
+              <span className="dot"></span>{s.icon} {s.label}
+              <span style={{fontSize:11,color:"var(--mute)"}}>· {st}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PipelineBar({activity,ledger}){
+  const runningIdx = runningStageIndex(activity);
+  return (
+    <div className="panelbox">
+      <h2>Flujo</h2>
+      <div className="pipe">
+        {STAGES.map((s,i)=>{
+          const st = stageStatus(s, i, activity, ledger, runningIdx);
+          const cls = st==="running"?"running":(st==="done"?"done":"");
+          return (
+            <Fragment key={s.key}>
+              {i>0 && <span className="arrow">→</span>}
+              <span className={"step "+cls}>{s.label} {st==="done"?"✓":st==="running"?"●":"○"}</span>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FindingDetail({f}){
+  const sast=f.sast||{}, ex=f.exploitability||{}, intel=f.intel||{}, tri=f.triage||{}, fix=f.fix||{}, ver=f.verification||{};
+  return (
+    <td colSpan="6" className="detail">
+      <dl>
+        <dt>Ubicacion</dt><dd><code>{f.location||"—"}</code> · {f.cwe||""} · {f.owasp_2025||f.owasp_2021||""}</dd>
+        {sast.flow && (<Fragment><dt>Flujo SAST</dt><dd><code>{sast.flow}</code> (confianza {sast.confidence??"—"})</dd></Fragment>)}
+        {sast.hypothesis && (<Fragment><dt>Hipotesis</dt><dd>{sast.hypothesis}</dd></Fragment>)}
+        {ex.verdict && (<Fragment><dt>Explotable</dt><dd>{ex.verdict} — {ex.conditions||""}</dd></Fragment>)}
+        {(ex.conceptual_chain||[]).length>0 && (<Fragment><dt>Cadena (PoC conceptual)</dt><dd><ol>{ex.conceptual_chain.map((c,i)=><li key={i}>{c}</li>)}</ol></dd></Fragment>)}
+        {intel.package && (<Fragment><dt>Dependencia</dt><dd><code>{intel.package}@{intel.installed_version}</code> → fix {intel.fixed_version||"?"} · {(intel.cve_ids||[]).join(", ")} {intel.in_cisa_kev?"· KEV":""} {intel.epss!=null?("· EPSS "+intel.epss):""}</dd></Fragment>)}
+        {tri.rationale && (<Fragment><dt>Triage</dt><dd>{tri.priority} · CVSS {tri.cvss??"—"} (v{tri.cvss_version||"?"}) — {tri.rationale}</dd></Fragment>)}
+        {fix.root_cause && (<Fragment><dt>Fix (causa raiz)</dt><dd>{fix.root_cause} → {fix.summary||""} {fix.applied?"· aplicado al working tree":"· sin aplicar"} {fix.asvs?("· ASVS "+fix.asvs):""}</dd></Fragment>)}
+        {ver.verdict && (<Fragment><dt>Verificacion</dt><dd>{ver.verdict} — {ver.evidence||""}</dd></Fragment>)}
+      </dl>
+    </td>
+  );
+}
+
+function FindingsTable({findings}){
+  const [open,setOpen] = useState({});
+  const sorted = [...findings].sort((a,b)=>(PRIO_ORDER[(a.triage||{}).priority]??5)-(PRIO_ORDER[(b.triage||{}).priority]??5));
+  if(findings.length===0) return <div className="empty">Sin hallazgos en el ledger todavia. Corre <code>/vuln-hunter:hunt</code>.</div>;
+  return (
+    <table>
+      <thead><tr><th>ID</th><th>Sev</th><th>Titulo</th><th>OWASP / CWE</th><th>Explotable</th><th>Estado</th></tr></thead>
+      <tbody>
+        {sorted.map(f=>{
+          const p = (f.triage||{}).priority || "—";
+          const intel = f.intel||{};
+          const isOpen = !!open[f.id];
+          return (
+            <Fragment key={f.id}>
+              <tr className="frow" onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
+                <td><code>{f.id}</code></td>
+                <td>{p!=="—" ? <span className="badge" style={{background:PRIO[p]||"#8a847a"}}>{p}</span> : "—"}</td>
+                <td>{f.title} {intel.in_cisa_kev && <span className="badge" style={{background:"#b4532f"}}>KEV</span>} {intel.known_ransomware_use && <span className="badge" style={{background:"#7a1f1f"}}>RANSOMWARE</span>}</td>
+                <td>{f.owasp_2025||f.owasp_2021||"—"}<br/><span style={{color:"var(--mute)",fontSize:12}}>{f.cwe||""}</span></td>
+                <td>{(f.exploitability||{}).verdict||"—"}</td>
+                <td><span className="pill">{STATUS_LABEL[f.status]||f.status||"—"}</span></td>
+              </tr>
+              {isOpen && <tr><FindingDetail f={f}/></tr>}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ActivityTimeline({activity}){
+  const evs = [...activity].reverse();
+  return (
+    <div className="panelbox timeline">
+      <h2>Actividad</h2>
+      {evs.length===0 && <div className="empty">Sin eventos.</div>}
+      {evs.map((e,i)=>{
+        let txt;
+        if(e.type==="run:start") txt=`▶ Auditoria iniciada (${e.scope||"repo"})`;
+        else if(e.type==="run:done") txt="■ Auditoria finalizada";
+        else if(e.type==="stage:start") txt=`● Empieza ${e.stage}${e.agent?" ("+e.agent+")":""}`;
+        else if(e.type==="stage:end") txt=`✓ Termina ${e.stage}${e.summary?" — "+e.summary:""}`;
+        else if(e.type==="finding:new") txt=`＋ ${e.id} ${e.title||""}`;
+        else if(e.type==="deploy:blocked") txt=`⛔ Deploy bloqueado — ${e.reason||""}`;
+        else txt=e.type;
+        return <div className="ev" key={(e.ts||"")+e.type+(e.id||e.stage||"")+i}><span className="t">{(e.ts||"").replace("T"," ").slice(5,16)}</span><span>{txt}</span></div>;
+      })}
+    </div>
+  );
+}
+
+function App(){
+  const [ledger,setLedger] = useState(null);
+  const [activity,setActivity] = useState([]);
+  const [err,setErr] = useState(null);
+  const [updated,setUpdated] = useState(null);
+
+  const poll = useCallback(async ()=>{
+    try{
+      const L = await fetchJSON("ledger.json");
+      const A = await fetchJSONL("activity.jsonl");
+      setLedger(L); setActivity(A); setErr(null);
+      setUpdated(new Date().toLocaleTimeString());
+    }catch(e){ setErr(String(e)); }
+  },[]);
+
+  useEffect(()=>{ poll(); const id=setInterval(poll,2000); return ()=>clearInterval(id); },[poll]);
+
+  if(err && !ledger) return <div className="wrap"><h1>vuln-hunter</h1><div className="empty">No se pudo leer <code>ledger.json</code> ({err}). Corre <code>/vuln-hunter:detect</code> o <code>/vuln-hunter:hunt</code> primero.</div></div>;
+  if(!ledger) return <div className="wrap"><div className="empty">Cargando…</div></div>;
+
+  const run = ledger.run||{};
+  const findings = ledger.findings||[];
+  const runDone = activity.some(e=>e.type==="run:done");
+  const kev = findings.filter(f=>(f.intel||{}).in_cisa_kev).length;
+
+  return (
+    <div className="wrap">
+      <h1>{runDone ? "" : <span className="live"></span>}vuln-hunter — Panel vivo</h1>
+      <div className="sub">scope: {run.scope||"repo completo"} · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {runDone?"finalizada":"en curso"} · actualizado {updated||"—"}</div>
+
+      {kev>0 && <div className="kev"><b>⚠ Atencion:</b> {kev} dependencia(s) de produccion con CVE en CISA KEV — el deploy queda bloqueado hasta parchear (vector tipico de ransomware, MITRE T1190).</div>}
+
+      <SummaryCards findings={findings}/>
+      <PipelineBar activity={activity} ledger={ledger}/>
+      <AgentRoster activity={activity} ledger={ledger}/>
+
+      <div className="grid">
+        <div>
+          <div className="panelbox" style={{padding:0,overflow:"hidden"}}>
+            <FindingsTable findings={findings}/>
+          </div>
+        </div>
+        <ActivityTimeline activity={activity}/>
+      </div>
+
+      <footer>Datos: .vuln-hunter/ledger.json + activity.jsonl · panel estatico (React CDN) · polling 2s · vuln-hunter no sustituye auditoria humana.</footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
