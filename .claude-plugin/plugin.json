@@ -22,8 +22,5 @@
     "ransomware",
     "monorepo"
   ],
-  "agents": "./agents/",
-  "commands": "./commands/",
-  "skills": "./skills/",
   "hooks": "./hooks/hooks.json"
 }
