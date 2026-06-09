@@ -22,7 +22,7 @@ al finding existente por su id. NUNCA dupliques un finding ni renumeres.
 | **threat-intel-scout** | `findings[].intel` (SCA de DEPENDENCIAS unicamente) | `status: hypothesis` |
 | redteam-whitehat | `findings[].exploitability` | `status: confirmed` |
 | triage-judge | `findings[].triage` | `status: triaged` o `filtered` |
-| appsec-fixer | `findings[].fix` | `status: fixed` |
+| appsec-fixer | `findings[].fix` | `status: fixing` al EMPEZAR cada VULN (emite `finding:state id=VULN-x state=fixing`), `status: fixed` al aplicar |
 | verify-engineer | `findings[].verification` | `status: closed` o vuelve a `fixed` |
 
 > Division SCA/SAST (importante): el **sast-analyst** NO escanea dependencias; eso
@@ -30,7 +30,8 @@ al finding existente por su id. NUNCA dupliques un finding ni renumeres.
 > mano. SAST = codigo propio; SCA/intel = dependencias de terceros.
 
 ## Versionado y retrocompatibilidad
-El ledger lleva `schema_version`. La version actual es **1.1**. Un run nuevo debe
+El ledger lleva `schema_version`. La version actual es **1.2** (añade el status
+`fixing` y el evento de actividad `finding:state`). Un run nuevo debe
 ser RETROCOMPATIBLE con ledgers de versiones anteriores: antes de leer/escribir,
 migra con el helper determinista (sube `schema_version`, rellena defaults y
 preserva todos los findings y su estado, idempotente):

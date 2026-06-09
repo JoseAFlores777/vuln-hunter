@@ -123,8 +123,8 @@
 
           "status": {
             "type": "string",
-            "enum": ["hypothesis", "confirmed", "triaged", "planned", "fixed", "closed", "filtered"],
-            "description": "Estado global del finding a lo largo del flujo."
+            "enum": ["hypothesis", "confirmed", "triaged", "planned", "fixing", "fixed", "closed", "filtered"],
+            "description": "Estado global del finding a lo largo del flujo. 'fixing' = el appsec-fixer empezo a trabajarlo (transitorio, se ve en el panel) y aun no aplica el cambio."
           }
         }
       }

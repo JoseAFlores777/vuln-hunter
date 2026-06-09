@@ -48,6 +48,14 @@ class TestAppendEvent(unittest.TestCase):
             lines = fh.read().strip().split("\n")
         self.assertEqual(len(lines), 2)
 
+    def test_finding_state_is_a_valid_event(self):
+        rc = activity.append_event("finding:state", {"id": "VULN-1", "state": "fixing"}, self.path)
+        self.assertEqual(rc, 0)
+        with open(self.path) as fh:
+            rec = json.loads(fh.read().strip())
+        self.assertEqual(rec["type"], "finding:state")
+        self.assertEqual(rec["state"], "fixing")
+
     def test_unknown_type_returns_2_and_writes_nothing(self):
         rc = activity.append_event("bogus:type", {}, self.path)
         self.assertEqual(rc, 2)

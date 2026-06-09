@@ -22,9 +22,10 @@ import json
 import os
 import sys
 
-CURRENT_SCHEMA = "1.1"
+CURRENT_SCHEMA = "1.2"
 DEFAULT_STATUS = "hypothesis"
-OPEN_STATUSES = {None, "hypothesis", "confirmed", "triaged", "planned"}
+# Abiertos = aun requieren accion. 'fixing' = el fixer empezo pero no termino.
+OPEN_STATUSES = {None, "hypothesis", "confirmed", "triaged", "planned", "fixing"}
 
 # Orden canonico de etapas (coincide con activity.py y el panel).
 STAGE_DONE = [

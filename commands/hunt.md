@@ -70,7 +70,20 @@ Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
 5. **PLAN** (`/vuln-hunter:plan`) -> plan de remediacion (superpowers si esta;
    si no, plan propio). Guarda `plan_ref`.
 6. Si NO es dry-run NI solo-deteccion:
+   - **GATE DE FIX (obligatorio, antes de tocar codigo).** Tras el plan y ANTES
+     de lanzar el appsec-fixer, muestra QUE se va a arreglar (lista de VULN-ids
+     con su prioridad y enfoque) y PREGUNTA al usuario, en una sola pregunta
+     enumerada (o herramienta de opciones):
+       1. Continuar con TODOS los fixes
+       2. Elegir cuales VULN-ids arreglar (el usuario da la lista)
+       3. Detenerse aqui (no aplicar fixes)
+     No apliques ningun fix hasta tener la respuesta. Si elige (3), termina el
+     flujo tras el plan (como dry-run). Si elige (2), pasa solo esos ids al fixer.
    - **appsec-fixer** -> fixes de causa raiz en branch `vuln-hunter/*` -> `fix`.
+     Solo sobre los VULN-ids aprobados en el gate. Cada cambio mapea a un VULN-id
+     (ver ADR 0002): el fixer NO toca nada que no este atado a un hallazgo del
+     plan, y un bump de dependencia EXIGE un finding SCA (si falta, invoca
+     threat-intel-scout al vuelo para crearlo; no sube deps en silencio).
    - **/vuln-hunter:patch** -> diffs + aprobacion humana por hash -> commit.
    - **verify-engineer** -> confirma cierre sin regresion -> `verification`.
 

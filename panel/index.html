@@ -144,6 +144,8 @@
   .lbadge.mitigando{color:var(--cyan-soft)}
   .lbadge.arreglados{color:var(--green-soft)}
   .lbadge.filtrados{color:var(--ink-mute)}
+  .lbadge.active{color:var(--cyan);border-color:var(--cyan);background:rgba(34,211,238,.1)}
+  .lbadge.active::before{animation:pulse 1.1s infinite}
 
   /* findings table */
   .tablecard{overflow:hidden}
@@ -212,6 +214,8 @@
   .csel{width:36px;text-align:center}
   .csel input{accent-color:var(--cyan);cursor:pointer;width:15px;height:15px}
   tr.frow.sel{background:rgba(34,211,238,.07)}
+  tr.frow.active{background:rgba(34,211,238,.06);box-shadow:inset 3px 0 0 var(--cyan)}
+  .fixed-what{font-size:11.5px;color:var(--green-soft);margin-top:3px;overflow-wrap:anywhere}
   .copybtn{font-family:var(--mono);background:rgba(255,255,255,.03);border:1px solid var(--line-2);color:var(--ink-mute);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:13px;transition:color .2s,border-color .2s,box-shadow .2s}
   .copybtn:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow-cyan)}
   .copybtn.ok{color:var(--green);border-color:var(--green)}
@@ -228,6 +232,35 @@
   .empty{color:var(--ink-mute);text-align:center;padding:44px;font-size:14px}
   footer{margin-top:30px;color:var(--ink-mute);font-family:var(--mono);font-size:11.5px;border-top:1px solid var(--line);padding-top:18px;overflow-wrap:anywhere}
   footer b{color:var(--cyan-soft)}
+
+  /* glosario: tooltip para abreviaciones (SAST, CVSS, KEV, ...) */
+  .gloss{border-bottom:1px dotted currentColor;cursor:help;text-underline-offset:2px}
+  .gloss:focus-visible{outline:1px solid var(--cyan);outline-offset:2px;border-radius:2px}
+  #glosstip{position:fixed;z-index:1000;max-width:282px;background:var(--panel-2);border:1px solid var(--line-2);
+    border-radius:10px;padding:10px 12px;box-shadow:0 18px 44px -14px rgba(0,0,0,.85),var(--glow-cyan);
+    font-family:var(--sans);font-size:12px;line-height:1.5;color:var(--ink-soft);pointer-events:none;opacity:0;transition:opacity .12s}
+  #glosstip.on{opacity:1}
+  #glosstip .gt-h{font-family:var(--mono);font-size:11px;color:var(--cyan-soft);font-weight:700;margin-bottom:4px;letter-spacing:.3px}
+
+  /* enlaces externos de justificacion (NVD, MITRE, CISA, OWASP, FIRST, ATT&CK) */
+  .ext{color:var(--cyan-soft);text-decoration:none;border-bottom:1px solid rgba(34,211,238,.35);white-space:nowrap}
+  .ext:hover{color:var(--cyan);border-bottom-color:var(--cyan)}
+  .ext::after{content:"↗";font-size:.82em;margin-left:1px;opacity:.65;vertical-align:.05em}
+  .refs{display:flex;flex-wrap:wrap;gap:7px}
+  .refchip{font-family:var(--mono);font-size:11px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
+    border-radius:7px;padding:3px 9px;color:var(--cyan-soft);text-decoration:none;background:rgba(34,211,238,.05);transition:border-color .2s,box-shadow .2s,color .2s}
+  .refchip:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:var(--glow-cyan)}
+  .refchip .rk{color:var(--ink-mute);font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+
+  /* acciones: trunca comandos largos (la copia sigue siendo completa) */
+  .cmd{max-width:100%}
+  .cmd .cmd-c{min-width:0;max-width:min(54vw,440px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .actions-hint{font-family:var(--mono);font-size:11px;color:var(--ink-mute);margin:-4px 0 13px}
+  .dlrow{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:13px}
+  .dl{font-family:var(--mono);font-size:12px;font-weight:600;text-decoration:none;border:1px solid var(--line-2);border-radius:9px;
+    padding:7px 12px;color:var(--ink-soft);background:var(--bg-2);display:inline-flex;gap:7px;align-items:center;transition:border-color .2s,box-shadow .2s,color .2s}
+  .dl:hover{border-color:var(--cyan);color:var(--ink);box-shadow:var(--glow-cyan)}
+  .dl-l{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-mute);margin-right:2px}
 
   @media (max-width:640px){
     .wrap{padding:24px 16px 70px}
@@ -250,9 +283,9 @@ const {useState,useEffect,useCallback,useRef,Fragment} = React;
 const STAGES = [
   {key:"detect",   label:"detect",   icon:"🧭", agent:null,                  desc:"Detecta los stacks del repo (Django, Next.js, Angular, .NET) y delimita el scope por paquete.", done:(L)=> (L.run&&L.run.stacks||[]).length>0},
   {key:"RECON",    label:"RECON",    icon:"🛰", agent:"recon-cartographer",  desc:"Mapea la superficie de ataque: entrypoints, sources/sinks y trust boundaries. Modela amenazas (STRIDE). No busca vulnerabilidades concretas.", done:(L)=> !!L.attack_surface},
-  {key:"SAST",     label:"SAST",     icon:"🔬", agent:"sast-analyst",        desc:"SAST del código propio (Semgrep, Bandit, ESLint-security, Roslyn). Sigue flujos source→sink con taint analysis. No escanea dependencias.", done:(L)=> (L.findings||[]).some(f=>f.sast)},
-  {key:"INTEL",    label:"INTEL",    icon:"📡", agent:"threat-intel-scout",  desc:"SCA de dependencias de producción. Cruza con OSV/NVD/CISA KEV/EPSS para hallar CVEs. Solo lee fuentes oficiales.", done:(L)=> (L.findings||[]).some(f=>f.intel)},
-  {key:"RED-TEAM", label:"RED-TEAM", icon:"🎯", agent:"redteam-whitehat",    desc:"Confirma la explotabilidad razonando como atacante. Produce solo PoCs conceptuales, nunca exploits desplegables.", done:(L)=> (L.findings||[]).some(f=>f.exploitability)},
+  {key:"SAST",     label:"SAST",     icon:"🔬", agent:"sast-analyst",        desc:"SAST (Static Application Security Testing) del código propio (Semgrep, Bandit, ESLint-security, Roslyn). Sigue flujos source→sink con taint analysis. No escanea dependencias.", done:(L)=> (L.findings||[]).some(f=>f.sast)},
+  {key:"INTEL",    label:"INTEL",    icon:"📡", agent:"threat-intel-scout",  desc:"SCA (Software Composition Analysis) de dependencias de producción. Cruza con OSV/NVD/CISA KEV/EPSS para hallar CVEs (vulnerabilidades conocidas). Solo lee fuentes oficiales.", done:(L)=> (L.findings||[]).some(f=>f.intel)},
+  {key:"RED-TEAM", label:"RED-TEAM", icon:"🎯", agent:"redteam-whitehat",    desc:"Confirma la explotabilidad razonando como atacante. Produce solo PoCs (pruebas de concepto) conceptuales, nunca exploits desplegables.", done:(L)=> (L.findings||[]).some(f=>f.exploitability)},
   {key:"TRIAGE",   label:"TRIAGE",   icon:"⚖️", agent:"triage-judge",        desc:"Prioriza con CVSS + EPSS + CISA KEV, deduplica y filtra falsos positivos. KEV es override de prioridad.", done:(L)=> (L.findings||[]).some(f=>f.triage)},
   {key:"plan",     label:"plan",     icon:"🗺", agent:null,                  desc:"Genera el plan de remediación priorizado (Inmediato / Esta semana / Este mes).", done:(L)=> !!L.plan_ref},
   {key:"FIX",      label:"FIX",      icon:"🔧", agent:"appsec-fixer",        desc:"Aplica el fix de causa raíz (ASVS, Cheat Sheets) en una branch vuln-hunter/*. No commitea sin aprobación humana.", done:(L)=> (L.findings||[]).some(f=>f.fix)},
@@ -281,12 +314,53 @@ const PRIO = {P0:"#ef4444",P1:"#fb923c",P2:"#f59e0b",P3:"#22c55e",FILTERED:"#6b7
 const PRIO_ORDER = {P0:0,P1:1,P2:2,P3:3,FILTERED:9};
 const STATUS_LABEL = {hypothesis:"Hipotesis",confirmed:"Confirmada",triaged:"Triada",planned:"Planificada",fixed:"Corregida",closed:"Cerrada",filtered:"Filtrada"};
 
+// ===== Glosario de abreviaciones (tooltip al pasar el cursor / enfocar) =====
+const GLOSSARY = {
+  SAST:{full:"SAST · Static Application Security Testing",d:"Análisis del código fuente propio sin ejecutarlo, para hallar vulnerabilidades (taint, source→sink)."},
+  SCA:{full:"SCA · Software Composition Analysis",d:"Análisis de las dependencias de terceros para detectar CVEs conocidos."},
+  CVE:{full:"CVE · Common Vulnerabilities and Exposures",d:"Identificador público y único de una vulnerabilidad conocida (p.ej. CVE-2024-1234)."},
+  CWE:{full:"CWE · Common Weakness Enumeration",d:"Catálogo de TIPOS de debilidad de software (p.ej. CWE-89 = SQL injection)."},
+  CVSS:{full:"CVSS · Common Vulnerability Scoring System",d:"Puntaje 0–10 que mide la severidad técnica de una vulnerabilidad."},
+  EPSS:{full:"EPSS · Exploit Prediction Scoring System",d:"Probabilidad (0–1) de que un CVE sea explotado en los próximos 30 días."},
+  KEV:{full:"CISA KEV · Known Exploited Vulnerabilities",d:"Catálogo de CISA con CVEs cuya explotación ya se confirmó in-the-wild. Es override de prioridad."},
+  OWASP:{full:"OWASP · Open Worldwide Application Security Project",d:"Su Top 10 clasifica los riesgos de seguridad web más críticos."},
+  GHSA:{full:"GHSA · GitHub Security Advisory",d:"Aviso de seguridad publicado por GitHub para una dependencia."},
+  PoC:{full:"PoC · Proof of Concept",d:"Demostración conceptual de que una vulnerabilidad es explotable (sin exploit desplegable)."},
+  ASVS:{full:"ASVS · Application Security Verification Standard",d:"Estándar OWASP de requisitos de seguridad; guía los fixes de causa raíz."},
+  T1190:{full:"MITRE ATT&CK T1190",d:"«Exploit Public-Facing Application»: explotar un servicio expuesto. Vector inicial típico de ransomware."},
+  SARIF:{full:"SARIF · Static Analysis Results Interchange Format",d:"Formato estándar para resultados de herramientas de análisis estático."},
+  STRIDE:{full:"STRIDE · modelo de amenazas",d:"Spoofing, Tampering, Repudiation, Information disclosure, DoS, Elevation of privilege."},
+  SEV:{full:"Severidad / Prioridad",d:"Prioridad P0–P3 derivada de CVSS + EPSS + CISA KEV. P0 = crítico, P3 = bajo."},
+};
+
+// ===== Enlaces de justificacion: a donde apunta cada evidencia =====
+const OWASP_URL = "https://owasp.org/Top10/";
+const KEV_URL   = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog";
+const EPSS_URL  = "https://www.first.org/epss/";
+const T1190_URL = "https://attack.mitre.org/techniques/T1190/";
+const cveUrl  = (id)=>"https://nvd.nist.gov/vuln/detail/"+encodeURIComponent(id);
+const ghsaUrl = (id)=>"https://github.com/advisories/"+encodeURIComponent(id);
+const cweUrl  = (cwe)=>{ const m=/(\d+)/.exec(cwe||""); return m?("https://cwe.mitre.org/data/definitions/"+m[1]+".html"):null; };
+
+// Reune todas las referencias autoritativas que justifican un hallazgo.
+function references(f){
+  const intel=f.intel||{}, out=[];
+  (intel.cve_ids||[]).forEach(id=>out.push({k:"CVE",label:id,url:cveUrl(id),title:"Detalle del CVE en NVD"}));
+  (intel.ghsa_ids||[]).forEach(id=>out.push({k:"GHSA",label:id,url:ghsaUrl(id),title:"GitHub Security Advisory"}));
+  if(f.cwe){ const u=cweUrl(f.cwe); if(u) out.push({k:"CWE",label:f.cwe,url:u,title:"Definición de la debilidad en MITRE CWE"}); }
+  if(f.owasp_2025||f.owasp_2021) out.push({k:"OWASP",label:f.owasp_2025||f.owasp_2021,url:OWASP_URL,title:"OWASP Top 10"});
+  if(intel.in_cisa_kev) out.push({k:"KEV",label:"CISA KEV",url:KEV_URL,title:"Catálogo CISA KEV"});
+  if(intel.epss!=null) out.push({k:"EPSS",label:"EPSS "+intel.epss,url:EPSS_URL,title:"Modelo EPSS (FIRST)"});
+  if(intel.known_ransomware_use) out.push({k:"ATT&CK",label:"T1190",url:T1190_URL,title:"Técnica MITRE ATT&CK T1190"});
+  return out;
+}
+
 // Ciclo de vida de un hallazgo -> bucket de pestania.
 const LIFE_STEPS = ["encontrados","mitigando","arreglados"];
 const LIFE_LABEL = {encontrados:"Encontrado",mitigando:"Mitigando",arreglados:"Arreglado",filtrados:"Filtrado"};
 function lifecycleOf(status){
   if(status==="closed") return "arreglados";
-  if(status==="fixed") return "mitigando";
+  if(status==="fixed"||status==="fixing") return "mitigando";
   if(status==="filtered") return "filtrados";
   return "encontrados";
 }
@@ -327,6 +401,18 @@ function stageStatus(stage, idx, activity, ledger, runningIdx){
 function SevChip({p}){
   if(!p || p==="—") return null;
   return <span className="sev" style={{color:PRIO[p]||"var(--ink-mute)"}}>{p}</span>;
+}
+
+// Abreviacion con tooltip de glosario. <Gloss term="SAST">SAST</Gloss>.
+function Gloss({term,children}){
+  const k = term || (typeof children==="string"?children:null);
+  if(!k || !GLOSSARY[k]) return <Fragment>{children!=null?children:term}</Fragment>;
+  return <span className="gloss" data-term={k} tabIndex={0} role="note">{children!=null?children:term}</span>;
+}
+// Enlace externo de justificacion (abre en pestania nueva, con icono ↗).
+function Ext({href,children,title}){
+  if(!href) return <Fragment>{children}</Fragment>;
+  return <a className="ext" href={href} target="_blank" rel="noopener noreferrer" title={title||"Abrir referencia"}>{children}</a>;
 }
 
 // ===== Comandos de Claude Code copiables =====
@@ -382,23 +468,21 @@ function CopyBtn({cmd}){
 function ActionsBar({ledger,findings,runDone}){
   const scope = (ledger.run||{}).scope;
   const resume = "/vuln-hunter:hunt"+(scope?" "+scope:"");
-  const dl = {fontFamily:"var(--mono,monospace)",fontSize:"12.5px",fontWeight:600,textDecoration:"none",
-    border:"1px solid rgba(120,160,200,.22)",borderRadius:"8px",padding:"7px 12px",
-    color:"var(--cyan,#22d3ee)",background:"rgba(34,211,238,.06)",display:"inline-flex",gap:"7px",alignItems:"center"};
   return (
     <div className="block">
       <div className="eyebrow">Acciones · copiar y pegar en Claude Code</div>
+      <div className="actions-hint">Clic en cualquier comando para copiarlo al portapapeles · los comandos largos se acortan en pantalla pero se copian completos.</div>
       <div className="cmdbar">
+        <CmdChip label="Siguiente paso" cmd={nextStep(findings)} kind="primary"/>
         <CmdChip label="Estado" cmd="/vuln-hunter:status"/>
-        <CmdChip label="Reanudar cadena" cmd={resume} kind="primary"/>
-        <CmdChip label="Siguiente paso" cmd={nextStep(findings)} kind="next"/>
+        <CmdChip label="Reanudar cadena" cmd={resume}/>
       </div>
       {runDone && (
-        <div className="cmdbar" style={{marginTop:"10px",alignItems:"center"}}>
-          <span className="eyebrow" style={{margin:"0 4px 0 0"}}>Informe</span>
-          <a style={dl} href="audit-report.html" target="_blank" rel="noopener">📄 Abrir · imprimir PDF</a>
-          <a style={dl} href="audit-report.pdf" download>⬇ PDF</a>
-          <a style={dl} href="audit-report.md" download>⬇ Markdown</a>
+        <div className="dlrow">
+          <span className="dl-l">Informe</span>
+          <a className="dl" href="audit-report.html" target="_blank" rel="noopener noreferrer">📄 Abrir · imprimir PDF</a>
+          <a className="dl" href="audit-report.pdf" download>⬇ PDF</a>
+          <a className="dl" href="audit-report.md" download>⬇ Markdown</a>
         </div>
       )}
     </div>
@@ -440,7 +524,7 @@ function SummaryCards({findings}){
       {order.map(p=>(
         <div className="stat" key={p}><div className="n" style={{color:PRIO[p]||"var(--cyan)"}}>{counts[p]}</div><div className="l">{p}</div></div>
       ))}
-      <div className="stat"><div className="n" style={{color:"var(--amber)"}}>{kev}</div><div className="l">CISA KEV</div></div>
+      <div className="stat"><div className="n" style={{color:"var(--amber)"}}>{kev}</div><div className="l"><Gloss term="KEV">CISA KEV</Gloss></div></div>
     </div>
   );
 }
@@ -534,7 +618,12 @@ function Bitacora({activity,findings}){
             else if(e.type==="finding:new"){
               cls="brow find";
               const f=byId[e.id]||{}; const p=(f.triage||{}).priority; const kev=(f.intel||{}).in_cisa_kev;
-              body=(<span><span className="g">＋</span> <b>{e.id}</b> {e.title||f.title||""} {p && <SevChip p={p}/>} {kev && <span className="tag" style={{background:"var(--amber)"}}>KEV</span>} <span className="src">{e.source||f.source||""}</span></span>);
+              body=(<span><span className="g">＋</span> <b>{e.id}</b> {e.title||f.title||""} {p && <SevChip p={p}/>} {kev && <span className="tag" style={{background:"var(--amber)"}}><Gloss term="KEV">KEV</Gloss></span>} <span className="src">{e.source||f.source||""}</span></span>);
+            }
+            else if(e.type==="finding:state"){
+              const STL={fixing:"en proceso",fixed:"corregido",closed:"cerrado",filtered:"filtrado"};
+              const cl={fixing:"a",fixed:"a",closed:"g",filtered:"m"}[e.state]||"c";
+              body=(<span><span className={cl}>↻</span> <b>{e.id}</b> → <span className={cl}>{STL[e.state]||e.state}</span>{e.note?" · "+e.note:""}</span>);
             }
             else if(e.type==="deploy:blocked"){ cls="brow block"; body=<span className="r">⛔ deploy bloqueado · {e.reason||""}</span>; }
             else body=e.type;
@@ -560,6 +649,7 @@ function Facet({label,good,wide,children}){
 function FindingDetail({f}){
   const sast=f.sast||{}, ex=f.exploitability||{}, intel=f.intel||{}, tri=f.triage||{}, fix=f.fix||{}, ver=f.verification||{};
   const chain = ex.conceptual_chain||[];
+  const refs = references(f);
   return (
     <td colSpan="8" className="detail">
       <div className="dcell">
@@ -567,9 +657,9 @@ function FindingDetail({f}){
           <LifecycleTrack status={f.status}/>
           <div className="dchips">
             {(f.triage||{}).priority && <span className="dchip"><b>{tri.priority}</b></span>}
-            {tri.cvss!=null && <span className="dchip">CVSS <b>{tri.cvss}</b> v{tri.cvss_version||"?"}</span>}
-            {(f.owasp_2025||f.owasp_2021) && <span className="dchip">{f.owasp_2025||f.owasp_2021}</span>}
-            {f.cwe && <span className="dchip">{f.cwe}</span>}
+            {tri.cvss!=null && <span className="dchip"><Gloss term="CVSS">CVSS</Gloss> <b>{tri.cvss}</b> v{tri.cvss_version||"?"}</span>}
+            {(f.owasp_2025||f.owasp_2021) && <span className="dchip"><Ext href={OWASP_URL} title="OWASP Top 10"><Gloss term="OWASP">{f.owasp_2025||f.owasp_2021}</Gloss></Ext></span>}
+            {f.cwe && <span className="dchip"><Ext href={cweUrl(f.cwe)} title="MITRE CWE"><Gloss term="CWE">{f.cwe}</Gloss></Ext></span>}
             {f.source && <span className="dchip">{f.source}</span>}
           </div>
         </div>
@@ -584,11 +674,19 @@ function FindingDetail({f}){
           <Facet label="📍 Ubicación"><code>{f.location||"—"}</code></Facet>
           {sast.hypothesis && <Facet label="🧠 Hipótesis">{sast.hypothesis}</Facet>}
           {sast.flow && <Facet label="🔬 Flujo SAST"><code>{sast.flow}</code> · confianza {sast.confidence??"—"} · {sast.tool||""}</Facet>}
-          {intel.package && <Facet label="📡 Dependencia"><code>{intel.package}@{intel.installed_version}</code> → fix {intel.fixed_version||"?"} · {(intel.cve_ids||[]).join(", ")} {intel.in_cisa_kev?"· KEV":""} {intel.epss!=null?("· EPSS "+intel.epss):""}</Facet>}
+          {intel.package && <Facet label="📡 Dependencia">
+            <code>{intel.package}@{intel.installed_version}</code> → fix {intel.fixed_version||"?"}
+            {(intel.cve_ids||[]).length>0 && <Fragment> · {intel.cve_ids.map((id,i)=><Fragment key={id}>{i>0?", ":""}<Ext href={cveUrl(id)} title="Detalle en NVD">{id}</Ext></Fragment>)}</Fragment>}
+            {intel.in_cisa_kev && <Fragment> · <Ext href={KEV_URL} title="Catálogo CISA KEV"><Gloss term="KEV">KEV</Gloss></Ext></Fragment>}
+            {intel.epss!=null && <Fragment> · <Gloss term="EPSS">EPSS</Gloss> <Ext href={EPSS_URL} title="Modelo EPSS (FIRST)">{intel.epss}</Ext></Fragment>}
+          </Facet>}
           {ex.verdict && <Facet label="🎯 Explotabilidad">{ex.verdict}{ex.conditions?" · "+ex.conditions:""}</Facet>}
           {tri.rationale && <Facet label="⚖️ Triage">{tri.priority} · {tri.rationale}</Facet>}
-          {fix.root_cause && <Facet label="🔧 Fix (causa raíz)" good={!!fix.applied}>{fix.root_cause} → {fix.summary||""} {fix.asvs?("· ASVS "+fix.asvs):""} {fix.applied? <span className="ok">· aplicado al working tree</span> : "· sin aplicar"}</Facet>}
+          {fix.root_cause && <Facet label="🔧 Fix (causa raíz)" good={!!fix.applied}>{fix.root_cause} → {fix.summary||""} {fix.asvs?<Fragment>· <Gloss term="ASVS">ASVS</Gloss> {fix.asvs}</Fragment>:""} {fix.applied? <span className="ok">· aplicado al working tree</span> : "· sin aplicar"}</Facet>}
           {ver.verdict && <Facet label="✅ Verificación" good={ver.verdict==="CLOSED"}>{ver.verdict}{ver.evidence?" · "+ver.evidence:""}</Facet>}
+          {refs.length>0 && <Facet label="🔗 Referencias (justificación)" wide={true}>
+            <div className="refs">{refs.map((r,i)=><a key={i} className="refchip" href={r.url} target="_blank" rel="noopener noreferrer" title={r.title}><span className="rk">{r.k}</span>{r.label}</a>)}</div>
+          </Facet>}
         </div>
         {chain.length>0 && (
           <Facet label="🧨 Cadena de explotación (PoC conceptual)" wide={true}>
@@ -624,7 +722,7 @@ function FindingsTable({findings,bucket}){
         </div>
       )}
       <table>
-        <thead><tr><th className="csel"></th><th>ID</th><th>Sev</th><th>Titulo</th><th>OWASP / CWE</th><th>Explotable</th><th>Estado</th><th>Acción</th></tr></thead>
+        <thead><tr><th className="csel"></th><th>ID</th><th><Gloss term="SEV">Sev</Gloss></th><th>Titulo</th><th><Gloss term="OWASP">OWASP</Gloss> / <Gloss term="CWE">CWE</Gloss></th><th>Explotable</th><th>Estado</th><th>Acción</th></tr></thead>
         <tbody className="swap" key={bucket}>
           {sorted.map(f=>{
             const p = (f.triage||{}).priority || "—";
@@ -634,14 +732,16 @@ function FindingsTable({findings,bucket}){
             const checked = sel.has(f.id);
             return (
               <Fragment key={f.id}>
-                <tr className={"frow "+life+(checked?" sel":"")} onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
+                <tr className={"frow "+life+(checked?" sel":"")+(f.status==="fixing"?" active":"")} onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
                   <td className="csel" onClick={(e)=>e.stopPropagation()}><input type="checkbox" checked={checked} onChange={()=>{}} onClick={(e)=>toggleSel(f.id,e)} aria-label={"seleccionar "+f.id}/></td>
                   <td><code>{f.id}</code></td>
                   <td>{p!=="—" ? <SevChip p={p}/> : "—"}</td>
-                  <td>{f.title} {intel.in_cisa_kev && <span className="tag" style={{background:"var(--amber)"}}>KEV</span>} {intel.known_ransomware_use && <span className="tag" style={{background:"var(--red)"}}>RANSOMWARE</span>}</td>
+                  <td>{f.title} {intel.in_cisa_kev && <span className="tag" style={{background:"var(--amber)"}}><Gloss term="KEV">KEV</Gloss></span>} {intel.known_ransomware_use && <span className="tag" style={{background:"var(--red)"}}>RANSOMWARE</span>}
+                    {bucket==="arreglados" && (f.fix||f.verification) && <div className="fixed-what">✓ {(f.fix||{}).summary||(f.fix||{}).root_cause||"corregido"}{(f.verification||{}).evidence?" · "+f.verification.evidence:""}</div>}
+                  </td>
                   <td>{f.owasp_2025||f.owasp_2021||"—"}<br/><span style={{color:"var(--ink-mute)",fontSize:12}}>{f.cwe||""}</span></td>
                   <td>{(f.exploitability||{}).verdict||"—"}</td>
-                  <td><span className={"lbadge "+life}>{LIFE_LABEL[life]}</span></td>
+                  <td>{f.status==="fixing" ? <span className="lbadge active">En proceso</span> : <span className={"lbadge "+life}>{LIFE_LABEL[life]}</span>}</td>
                   <td onClick={(e)=>e.stopPropagation()}><CopyBtn cmd={recCommand(f)}/></td>
                 </tr>
                 {isOpen && <tr><FindingDetail f={f}/></tr>}
@@ -696,6 +796,42 @@ function App(){
 
   useEffect(()=>{ poll(); const id=setInterval(poll,2000); return ()=>clearInterval(id); },[poll]);
 
+  // Tooltip de glosario: un solo elemento fijo posicionado en hover/focus de .gloss
+  // (position:fixed -> no lo recortan los contenedores con overflow:hidden, como las tablas).
+  useEffect(()=>{
+    let tip = document.getElementById("glosstip");
+    if(!tip){ tip = document.createElement("div"); tip.id = "glosstip"; document.body.appendChild(tip); }
+    const show = (el)=>{
+      const g = GLOSSARY[el.getAttribute("data-term")]; if(!g) return;
+      tip.innerHTML = "";
+      const h = document.createElement("div"); h.className = "gt-h"; h.textContent = g.full;
+      const b = document.createElement("div"); b.textContent = g.d;
+      tip.appendChild(h); tip.appendChild(b);
+      tip.style.left = "0px"; tip.style.top = "0px"; tip.classList.add("on");
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      const left = Math.min(window.innerWidth - tw - 8, Math.max(8, r.left));
+      let top = r.bottom + 8;
+      if(top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 8);
+      tip.style.left = left + "px"; tip.style.top = top + "px";
+    };
+    const hide = ()=>tip.classList.remove("on");
+    const over = (e)=>{ const el = e.target && e.target.closest && e.target.closest(".gloss"); if(el) show(el); };
+    const out  = (e)=>{ const el = e.target && e.target.closest && e.target.closest(".gloss"); if(el) hide(); };
+    document.addEventListener("mouseover", over);
+    document.addEventListener("mouseout", out);
+    document.addEventListener("focusin", over);
+    document.addEventListener("focusout", out);
+    window.addEventListener("scroll", hide, true);
+    return ()=>{
+      document.removeEventListener("mouseover", over);
+      document.removeEventListener("mouseout", out);
+      document.removeEventListener("focusin", over);
+      document.removeEventListener("focusout", out);
+      window.removeEventListener("scroll", hide, true);
+    };
+  },[]);
+
   if(err && !ledger) return <div className="wrap"><div className="brand"><span className="slash">//</span>vuln-hunter</div><div className="surface empty">No se pudo leer <code>ledger.json</code> ({err}). Corre <code>/vuln-hunter:detect</code> o <code>/vuln-hunter:hunt</code> primero.</div></div>;
   if(!ledger) return <div className="wrap"><div className="surface empty">Cargando…</div></div>;
 
@@ -712,7 +848,7 @@ function App(){
       </div>
       <div className="sub">scope: <b>{run.scope||"repo completo"}</b> · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {runDone?"finalizada":"en curso"} · act {updated||"—"}</div>
 
-      {kev>0 && <div className="alert"><span className="aic">⚠</span><div className="atxt"><b>Atención:</b> {kev} dependencia(s) de producción con CVE en CISA KEV. El deploy queda bloqueado hasta parchear (vector típico de ransomware, MITRE T1190).</div></div>}
+      {kev>0 && <div className="alert"><span className="aic">⚠</span><div className="atxt"><b>Atención:</b> {kev} dependencia(s) de producción con <Gloss term="CVE">CVE</Gloss> en <Ext href={KEV_URL} title="Catálogo CISA KEV"><Gloss term="KEV">CISA KEV</Gloss></Ext>. El deploy queda bloqueado hasta parchear (vector típico de ransomware, <Ext href={T1190_URL} title="MITRE ATT&CK"><Gloss term="T1190">MITRE T1190</Gloss></Ext>).</div></div>}
 
       <SummaryCards findings={findings}/>
       <ActionsBar ledger={ledger} findings={findings} runDone={runDone}/>

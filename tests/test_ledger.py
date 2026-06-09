@@ -56,6 +56,14 @@ class TestResumePoint(unittest.TestCase):
         rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {"priority": "P1"}, "status": "triaged"}])
         self.assertEqual(rp["next_command"], "/vuln-hunter:fix all")
 
+    def test_fixing_in_progress_resumes_fix(self):
+        rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {}, "status": "fixing"}])
+        self.assertEqual(rp["next_command"], "/vuln-hunter:fix all")
+
+    def test_fixing_counts_as_open(self):
+        rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {}, "status": "fixing"}])
+        self.assertEqual(rp["open"], 1)
+
     def test_fixed_suggests_verify(self):
         rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {}, "fix": {}, "status": "fixed"}])
         self.assertEqual(rp["next_command"], "/vuln-hunter:verify all")

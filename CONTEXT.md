@@ -26,8 +26,16 @@ _Avoid_: issue, alerta, bug.
 
 **Status** (de un finding):
 Etapa global del hallazgo en el flujo: `hypothesis → confirmed → triaged → planned
-→ fixed → closed → filtered`.
+→ fixing → fixed → closed → filtered`. `fixing` es el estado transitorio que el
+appsec-fixer escribe al EMPEZAR a tocar ese hallazgo (se ve "trabajándose ahora"
+en el panel); pasa a `fixed` al aplicar el cambio y a `closed` tras verificación.
 _Avoid_: estado (ambiguo con Ledger), fase.
+
+**Lifecycle** (agrupación del panel):
+Cómo el panel agrupa los `status` en pestañas: **Encontrados** (hypothesis,
+confirmed, triaged, planned), **Mitigando** (fixing, fixed), **Arreglados**
+(closed), **Filtrados** (filtered). Un hallazgo "se mueve de pestaña" al avanzar.
+_Avoid_: tab, columna._
 
 **Panel**:
 Frontend estático (React por CDN, sin instalar nada) que lee el ledger y se

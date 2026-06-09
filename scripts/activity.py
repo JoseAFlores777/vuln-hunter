@@ -19,7 +19,7 @@ from datetime import datetime
 EVENT_TYPES = {
     "run:start", "run:done",
     "stage:start", "stage:end",
-    "finding:new", "deploy:blocked",
+    "finding:new", "finding:state", "deploy:blocked",
 }
 
 

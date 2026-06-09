@@ -131,7 +131,7 @@ python3 scripts/approve-diff.py                 # aprueba ESE diff (por hash)
 vuln-hunter/
 ├── .claude-plugin/{plugin.json, marketplace.json}
 ├── agents/        (7 subagentes)
-├── commands/      (12 slash commands)
+├── commands/      (15 slash commands)
 ├── skills/        (stack-detector, owasp-reference, ledger-contract)
 ├── hooks/         (hooks.json + 2 guardianes)
 ├── scripts/       (run-scan.sh, intel-cache.sh, approve-diff.py, report.py)
