@@ -16,7 +16,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Fira+Code:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Share+Tech+Mono&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
 <style>
 :root{
@@ -39,7 +39,7 @@
   --violet-soft:#c4b5fd;
   --glow-cyan:0 0 0 1px rgba(34,211,238,.35), 0 0 24px -4px rgba(34,211,238,.45);
   --glow-green:0 0 0 1px rgba(34,197,94,.35), 0 0 24px -4px rgba(34,197,94,.45);
-  --display:'Chakra Petch',ui-sans-serif,system-ui,sans-serif;
+  --display:'Sora',ui-sans-serif,system-ui,-apple-system,sans-serif;
   --mono:'Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
   --term:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
   --hud:'Share Tech Mono',var(--mono);
@@ -163,7 +163,7 @@ h2.section-title em{color:var(--cyan);font-style:normal}
 .badge .ok{color:var(--green)}
 h1.hero-title{
   font-family:var(--display);font-weight:700;
-  font-size:clamp(42px,8.2vw,88px);line-height:1.0;letter-spacing:-1.5px;
+  font-size:clamp(40px,7.4vw,80px);line-height:1.05;letter-spacing:-2.2px;
   margin:0 0 8px;
   background:linear-gradient(180deg,#fff 8%,#aebfd4 96%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
@@ -211,7 +211,7 @@ h1.hero-title .accent{
 /* ---------- stats strip ---------- */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:56px}
 .stat{background:var(--bg-2);padding:26px 18px;text-align:center}
-.stat .n{font-family:var(--hud);font-size:34px;color:var(--cyan);line-height:1}
+.stat .n{font-family:var(--display);font-weight:700;font-size:36px;color:var(--cyan);line-height:1;letter-spacing:-1px}
 .stat .l{font-size:13px;color:var(--ink-mute);margin-top:8px;letter-spacing:.4px}
 @media (max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
 
@@ -227,76 +227,80 @@ h1.hero-title .accent{
 .marco h3{margin:0 0 6px;font-family:var(--mono);font-size:16px;color:var(--green-soft)}
 .marco p{margin:0;color:var(--ink-soft);font-size:15px}
 
-/* ---------- flow / pipeline (redesigned) ---------- */
+/* ---------- flow / pipeline (vertical timeline, no horizontal scroll) ---------- */
 .flow-wrap{
   border:1px solid var(--line);border-radius:18px;
   background:
     radial-gradient(120% 90% at 0% 0%,rgba(34,211,238,.05),transparent 55%),
     radial-gradient(120% 90% at 100% 100%,rgba(34,197,94,.05),transparent 55%),
     linear-gradient(180deg,var(--panel),var(--bg-2));
-  padding:38px 28px 30px;overflow-x:auto;
+  padding:34px 30px 28px;
 }
-.pipe{display:flex;align-items:stretch;gap:6px;min-width:max-content;margin:0 auto;justify-content:center}
-.stage{display:flex;flex-direction:column;align-items:center;gap:9px}
-.stage .ph{
-  font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;
-  color:var(--ink-mute);display:flex;align-items:center;gap:6px;white-space:nowrap;height:14px;
+.pipe{max-width:680px;margin:0 auto}
+.lane{display:grid;grid-template-columns:42px 1fr;gap:20px;padding-bottom:26px;position:relative}
+.lane:last-child{padding-bottom:0}
+/* rail + number badge + vertical connector */
+.lane .rail{display:flex;justify-content:center;position:relative}
+.lane .rnum{
+  width:40px;height:40px;border-radius:11px;display:grid;place-items:center;z-index:1;
+  font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);
+  border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.07);
 }
-.stage .ph .pn{color:var(--cyan);font-weight:700}
-.stage.p-off .ph .pn{color:var(--violet)}
-.stage.p-dec .ph .pn{color:var(--amber)}
-.stage.p-rem .ph .pn{color:var(--green)}
-.pnode{
-  display:flex;flex-direction:column;gap:7px;align-items:center;justify-content:center;
-  width:116px;min-height:96px;padding:15px 12px;border-radius:13px;
+.lane:not(:last-child) .rail::after{
+  content:"";position:absolute;left:50%;transform:translateX(-50%);
+  top:46px;bottom:-22px;width:2px;border-radius:2px;
+  background:linear-gradient(180deg,var(--line-2),rgba(120,160,200,.10));
+}
+.lane.p-off .rnum{color:var(--violet);border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.08)}
+.lane.p-dec .rnum{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08)}
+.lane.p-rem .rnum{color:var(--green);border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08)}
+/* lane body */
+.lbody{min-width:0;padding-top:1px}
+.lhead{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:11px}
+.lhead .ph-name{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:1.8px;text-transform:uppercase;color:var(--cyan)}
+.lane.p-off .lhead .ph-name{color:var(--violet)}
+.lane.p-dec .lhead .ph-name{color:var(--amber)}
+.lane.p-rem .lhead .ph-name{color:var(--green)}
+.par-tag{
+  font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--cyan);
+  border:1px solid rgba(34,211,238,.3);border-radius:999px;padding:2px 9px;background:rgba(34,211,238,.06);
+}
+.nodes{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.node2{
+  display:flex;align-items:center;gap:11px;min-width:0;
+  padding:11px 14px;border-radius:11px;
   border:1px solid var(--line-2);background:rgba(255,255,255,.02);
-  font-family:var(--mono);font-size:12px;text-align:center;position:relative;
   transition:border-color .2s,box-shadow .2s,transform .2s,background .2s;
 }
-.pnode .pic{width:24px;height:24px;color:var(--cyan)}
-.pnode .pic svg{width:100%;height:100%}
-.pnode .pt{color:var(--ink);font-weight:600;font-size:12.5px}
-.pnode .ps{color:var(--ink-mute);font-size:10px;letter-spacing:.2px}
-.pnode:hover{transform:translateY(-3px);border-color:var(--cyan);box-shadow:var(--glow-cyan);background:rgba(34,211,238,.04)}
-/* phase tints */
-.stage.p-off .pnode .pic{color:var(--violet)}
-.stage.p-off .pnode:hover{border-color:var(--violet);box-shadow:0 0 0 1px rgba(167,139,250,.35),0 0 24px -4px rgba(167,139,250,.45);background:rgba(167,139,250,.05)}
-.stage.p-dec .pnode .pic{color:var(--amber)}
-.stage.p-dec .pnode:hover{border-color:var(--amber);box-shadow:0 0 0 1px rgba(245,158,11,.35),0 0 24px -4px rgba(245,158,11,.45);background:rgba(245,158,11,.05)}
-.stage.p-rem .pnode .pic{color:var(--green)}
-.stage.p-rem .pnode:hover{border-color:var(--green);box-shadow:var(--glow-green);background:rgba(34,197,94,.05)}
-/* parallel branch */
-.stage.parallel .pstack{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:16px}
-.stage.parallel .pstack::before{
-  content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;border-radius:2px;
-  background:linear-gradient(180deg,var(--cyan),var(--green));opacity:.55;
-}
-.stage.parallel .pnode{min-height:0;flex-direction:row;width:130px;gap:9px;padding:11px 12px;justify-content:flex-start;text-align:left}
-.stage.parallel .pnode .pic{width:18px;height:18px;flex:0 0 auto}
-.stage.parallel .pnode .pt{font-size:12px}
-.par-tag{
-  font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--cyan);
-  border:1px solid rgba(34,211,238,.3);border-radius:6px;padding:2px 6px;background:rgba(34,211,238,.06);
-}
-/* connector */
-.pconn{display:flex;flex-direction:column;align-items:center;justify-content:center;align-self:center;color:var(--ink-mute);min-width:26px;margin-top:23px}
-.pconn svg{width:22px;height:22px}
-.pconn.toRem{color:var(--green)}
+.node2:hover{transform:translateY(-2px);border-color:var(--cyan);box-shadow:var(--glow-cyan);background:rgba(34,211,238,.04)}
+.node2 .nic{width:20px;height:20px;flex:0 0 auto;color:var(--cyan)}
+.node2 .nic svg{width:100%;height:100%}
+.node2 .ntext{display:flex;flex-direction:column;line-height:1.22;min-width:0}
+.node2 .nt{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--ink)}
+.node2 .ns{font-size:10.5px;color:var(--ink-mute);letter-spacing:.2px}
+/* per-phase node tints */
+.lane.p-off .node2 .nic{color:var(--violet)}
+.lane.p-off .node2:hover{border-color:var(--violet);box-shadow:0 0 0 1px rgba(167,139,250,.35),0 0 22px -6px rgba(167,139,250,.5);background:rgba(167,139,250,.05)}
+.lane.p-dec .node2 .nic{color:var(--amber)}
+.lane.p-dec .node2:hover{border-color:var(--amber);box-shadow:0 0 0 1px rgba(245,158,11,.35),0 0 22px -6px rgba(245,158,11,.5);background:rgba(245,158,11,.05)}
+.lane.p-rem .node2 .nic{color:var(--green)}
+.lane.p-rem .node2:hover{border-color:var(--green);box-shadow:var(--glow-green);background:rgba(34,197,94,.05)}
+/* in-lane sequential arrow */
+.narw{flex:0 0 auto;color:var(--ink-mute);display:inline-flex}
+.narw svg{width:16px;height:16px}
+.lane.p-rem .narw{color:rgba(34,197,94,.55)}
 /* legend */
-.pipe-legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
+.pipe-legend{display:flex;gap:16px 20px;flex-wrap:wrap;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
 .pipe-legend .lg{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
 .pipe-legend .lg .sw{width:10px;height:10px;border-radius:3px}
 .lg .sw.cyan{background:var(--cyan)}.lg .sw.violet{background:var(--violet)}.lg .sw.amber{background:var(--amber)}.lg .sw.green{background:var(--green)}
 .flow-note{text-align:center;color:var(--ink-mute);font-family:var(--mono);font-size:12px;margin-top:16px}
-@media (max-width:760px){
-  .flow-wrap{padding:26px 16px}
-  .pipe{flex-direction:column;align-items:center;min-width:0;gap:4px}
-  .stage{width:100%;max-width:280px}
-  .pnode{width:100%}
-  .stage.parallel .pstack{padding-left:0}
-  .stage.parallel .pstack::before{display:none}
-  .stage.parallel .pnode{width:100%}
-  .pconn{transform:rotate(90deg);margin:2px 0;min-width:0}
+@media (max-width:680px){
+  .flow-wrap{padding:24px 16px}
+  .lane{grid-template-columns:36px 1fr;gap:14px}
+  .lane .rnum{width:34px;height:34px;font-size:12px}
+  .lane:not(:last-child) .rail::after{top:40px}
+  .node2{flex:1 1 auto}
 }
 
 /* ---------- agents grid ---------- */
@@ -442,7 +446,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Plugin Claude Code</span>
   </div>
 
-  <h1 class="hero-title reveal" data-i18n="hero.title">Caza de <span class="accent">vulnerabilidades</span><br>multi&#8209;agente</h1>
+  <h1 class="hero-title reveal" data-i18n="hero.title">Encuentra. Confirma. <span class="accent">Arregla.</span></h1>
   <p class="hero-sub reveal" data-i18n="hero.sub">Un escuadrón de <b>7 agentes</b> de seguridad para Claude Code que <b>detecta, vigila amenazas, tria, planifica, arregla, parchea y verifica</b> vulnerabilidades en tu repo o monorepo — sin teatro de seguridad.</p>
 
   <div class="hero-cta reveal">
@@ -491,80 +495,87 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
   <div class="flow-wrap reveal">
     <div class="pipe">
       <!-- 01 recon -->
-      <div class="stage">
-        <div class="ph"><span class="pn">01</span><span data-i18n="flow.ph.recon">Recon</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l9-3 9 3-9 3-9-3z"/><path d="M3 6v6l9 3 9-3V6"/></svg></span>
-          <span class="pt">recon</span><span class="ps" data-i18n="flow.s.recon">superficie</span>
+      <div class="lane">
+        <div class="rail"><span class="rnum">01</span></div>
+        <div class="lbody">
+          <div class="lhead"><span class="ph-name" data-i18n="flow.ph.recon">Recon</span></div>
+          <div class="nodes">
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l9-3 9 3-9 3-9-3z"/><path d="M3 6v6l9 3 9-3V6"/></svg></span>
+              <span class="ntext"><span class="nt">recon</span><span class="ns" data-i18n="flow.s.recon">superficie</span></span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="pconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
       <!-- 02 analysis (parallel) -->
-      <div class="stage parallel">
-        <div class="ph"><span class="pn">02</span><span data-i18n="flow.ph.analysis">Análisis</span> <span class="par-tag">∥ <span data-i18n="flow.parallel">paralelo</span></span></div>
-        <div class="pstack">
-          <div class="pnode">
-            <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg></span>
-            <span class="pt">scan</span><span class="ps" data-i18n="flow.s.scan">SAST código</span>
-          </div>
-          <div class="pnode">
-            <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
-            <span class="pt">watch</span><span class="ps">SCA deps</span>
+      <div class="lane">
+        <div class="rail"><span class="rnum">02</span></div>
+        <div class="lbody">
+          <div class="lhead"><span class="ph-name" data-i18n="flow.ph.analysis">Análisis</span><span class="par-tag">∥ <span data-i18n="flow.parallel">paralelo</span></span></div>
+          <div class="nodes">
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg></span>
+              <span class="ntext"><span class="nt">scan</span><span class="ns" data-i18n="flow.s.scan">SAST código</span></span>
+            </div>
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
+              <span class="ntext"><span class="nt">watch</span><span class="ns">SCA deps</span></span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="pconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
       <!-- 03 offensive -->
-      <div class="stage p-off">
-        <div class="ph"><span class="pn">03</span><span data-i18n="flow.ph.offensive">Ofensiva</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1 3-6z"/></svg></span>
-          <span class="pt">red-team</span><span class="ps" data-i18n="flow.s.redteam">PoC concept.</span>
+      <div class="lane p-off">
+        <div class="rail"><span class="rnum">03</span></div>
+        <div class="lbody">
+          <div class="lhead"><span class="ph-name" data-i18n="flow.ph.offensive">Ofensiva</span></div>
+          <div class="nodes">
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1 3-6z"/></svg></span>
+              <span class="ntext"><span class="nt">red-team</span><span class="ns" data-i18n="flow.s.redteam">PoC concept.</span></span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="pconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
-      <!-- 04 triage -->
-      <div class="stage p-dec">
-        <div class="ph"><span class="pn">04</span><span data-i18n="flow.ph.decision">Decisión</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 7l7-4 7 4M3 11h6l-3 5a3 3 0 0 1-3-5zm12 0h6l-3 5a3 3 0 0 1-3-5z"/></svg></span>
-          <span class="pt">triage</span><span class="ps">CVSS+EPSS</span>
+      <!-- 04 decision: triage -> plan -->
+      <div class="lane p-dec">
+        <div class="rail"><span class="rnum">04</span></div>
+        <div class="lbody">
+          <div class="lhead"><span class="ph-name" data-i18n="flow.ph.decision">Decisión</span></div>
+          <div class="nodes">
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 7l7-4 7 4M3 11h6l-3 5a3 3 0 0 1-3-5zm12 0h6l-3 5a3 3 0 0 1-3-5z"/></svg></span>
+              <span class="ntext"><span class="nt">triage</span><span class="ns">CVSS+EPSS</span></span>
+            </div>
+            <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <span class="ntext"><span class="nt">plan</span><span class="ns" data-i18n="flow.s.plan">remediación</span></span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="pconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
-      <!-- 05 plan -->
-      <div class="stage p-dec">
-        <div class="ph"><span class="pn">05</span><span data-i18n="flow.ph.decision2">Decisión</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
-          <span class="pt">plan</span><span class="ps" data-i18n="flow.s.plan">remediación</span>
-        </div>
-      </div>
-      <div class="pconn toRem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
-      <!-- 06 fix -->
-      <div class="stage p-rem">
-        <div class="ph"><span class="pn">06</span><span data-i18n="flow.ph.remediation">Remediación</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7l-1.5-1.5a2 2 0 0 0-3 0L4 11a2 2 0 0 0 0 3l1.5 1.5M10 17l1.5 1.5a2 2 0 0 0 3 0L20 13a2 2 0 0 0 0-3L18.5 8.5M8 16l8-8"/></svg></span>
-          <span class="pt">fix</span><span class="ps" data-i18n="flow.s.fix">causa raíz</span>
-        </div>
-      </div>
-      <div class="pconn toRem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
-      <!-- 07 patch -->
-      <div class="stage p-rem">
-        <div class="ph"><span class="pn">07</span><span data-i18n="flow.ph.remediation2">Remediación</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
-          <span class="pt">patch</span><span class="ps" data-i18n="flow.s.patch">aprob. hash</span>
-        </div>
-      </div>
-      <div class="pconn toRem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></div>
-      <!-- 08 verify -->
-      <div class="stage p-rem">
-        <div class="ph"><span class="pn">08</span><span data-i18n="flow.ph.remediation3">Remediación</span></div>
-        <div class="pnode">
-          <span class="pic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
-          <span class="pt">verify</span><span class="ps" data-i18n="flow.s.verify">sin regresión</span>
+      <!-- 05 remediation: fix -> patch -> verify -->
+      <div class="lane p-rem">
+        <div class="rail"><span class="rnum">05</span></div>
+        <div class="lbody">
+          <div class="lhead"><span class="ph-name" data-i18n="flow.ph.remediation">Remediación</span></div>
+          <div class="nodes">
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7l-1.5-1.5a2 2 0 0 0-3 0L4 11a2 2 0 0 0 0 3l1.5 1.5M10 17l1.5 1.5a2 2 0 0 0 3 0L20 13a2 2 0 0 0 0-3L18.5 8.5M8 16l8-8"/></svg></span>
+              <span class="ntext"><span class="nt">fix</span><span class="ns" data-i18n="flow.s.fix">causa raíz</span></span>
+            </div>
+            <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
+              <span class="ntext"><span class="nt">patch</span><span class="ns" data-i18n="flow.s.patch">aprob. hash</span></span>
+            </div>
+            <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
+            <div class="node2">
+              <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <span class="ntext"><span class="nt">verify</span><span class="ns" data-i18n="flow.s.verify">sin regresión</span></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -575,7 +586,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
       <span class="lg"><span class="sw amber"></span><span data-i18n="flow.lg.decision">Decisión</span></span>
       <span class="lg"><span class="sw green"></span><span data-i18n="flow.lg.remediation">Remediación</span></span>
     </div>
-    <div class="flow-note" data-i18n="flow.note">scan ∥ watch corren en paralelo · ▶ desplázate horizontalmente en móvil</div>
+    <div class="flow-note" data-i18n="flow.note">scan ∥ watch corren en paralelo · el resto es secuencial</div>
   </div>
 </section>
 
@@ -860,7 +871,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
   var EN = {
     "nav.flow":"Pipeline","nav.agents":"Agents","nav.commands":"Commands","nav.why":"Why","nav.install":"Install",
     "hero.badge1":"Defensive &amp; authorized",
-    "hero.title":"Multi&#8209;agent <span class=\"accent\">vulnerability</span><br>hunting",
+    "hero.title":"Hunt. Confirm. <span class=\"accent\">Patch.</span>",
     "hero.sub":"A squad of <b>7 security agents</b> for Claude Code that <b>detects, watches threats, triages, plans, fixes, patches and verifies</b> vulnerabilities across your repo or monorepo — no security theater.",
     "hero.ctaInstall":"Install now","hero.ctaFlow":"See the pipeline",
     "hero.term":'<div><span class="pr">❯</span> <span class="cmd">/vuln-hunter:hunt</span></div>'+
@@ -879,7 +890,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "flow.ph.decision":"Decision","flow.ph.decision2":"Decision","flow.ph.remediation":"Remediation","flow.ph.remediation2":"Remediation","flow.ph.remediation3":"Remediation",
     "flow.s.recon":"surface","flow.s.scan":"SAST code","flow.s.redteam":"concept. PoC","flow.s.plan":"remediation","flow.s.fix":"root cause","flow.s.patch":"hash approval","flow.s.verify":"no regression",
     "flow.lg.analysis":"Recon &amp; analysis","flow.lg.offensive":"Offensive (PoC)","flow.lg.decision":"Decision","flow.lg.remediation":"Remediation",
-    "flow.note":"scan ∥ watch run in parallel · ▶ scroll horizontally on mobile",
+    "flow.note":"scan ∥ watch run in parallel · the rest is sequential",
     "ag.eyebrow":"The squad","ag.title":"7 agents, <em>7 real professionals</em>",
     "ag.lede":"Each subagent is modeled as a security specialist with its own methodology. SAST and SCA don't overlap: one looks at your code, the other at your dependencies.",
     "ag.recon.role":"Surface cartographer","ag.recon.desc":"Maps the attack surface: inputs, sinks, trust and paths. Builds the ledger's initial context.",
