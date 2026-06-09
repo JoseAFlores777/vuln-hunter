@@ -1,6 +1,6 @@
 ---
 description: Verifica que los fixes cierran las vulnerabilidades sin regresion (delega en verify-engineer)
-argument-hint: [VULN-NNN | all]
+argument-hint: [VULN-NNN ... | all]
 allowed-tools: Task, Read, Grep, Glob, Bash(git diff:*), Bash(python3:*)
 model: sonnet
 ---
@@ -8,7 +8,8 @@ model: sonnet
 # Verificacion de cierre
 
 ## Tarea
-Lanza el subagente **verify-engineer** sobre **$ARGUMENTS** (o `all`). Re-ejecuta
+Lanza el subagente **verify-engineer** sobre **$ARGUMENTS** (uno o varios
+VULN-ids separados por espacio, o `all`). Re-ejecuta
 el escaner que detecto cada VULN para confirmar que el hallazgo desaparece, corre
 la suite de tests para descartar regresion, re-escanea el diff por nuevas vulns y
 devuelve veredicto CERRADO / NO_CERRADO / REGRESION por cada VULN. Si hay

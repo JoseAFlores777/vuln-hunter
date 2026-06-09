@@ -3,86 +3,293 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>vuln-hunter — Panel vivo</title>
+<meta name="color-scheme" content="dark" />
+<title>vuln-hunter // panel vivo</title>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --paper:#f4f1ea;--card:#fff;--ink:#1a1915;--mute:#8a847a;--rule:#ddd8cc;
-    --p0:#b4532f;--p1:#c0772f;--p2:#c89a3c;--p3:#6b7d5c;--filt:#8a847a;
-    --run:#c0772f;--done:#6b7d5c;--idle:#bdb7a9;
+    --bg:#070a0f;--bg-2:#0a0e16;--panel:#0e1420;--panel-2:#111a28;
+    --ink:#e6edf6;--ink-soft:#aebacb;--ink-mute:#6b7889;
+    --line:rgba(120,160,200,.12);--line-2:rgba(120,160,200,.22);
+    --green:#22c55e;--green-soft:#4ade80;--cyan:#22d3ee;--cyan-soft:#67e8f9;
+    --amber:#f59e0b;--orange:#fb923c;--red:#ef4444;--violet:#a78bfa;
+    --glow-cyan:0 0 0 1px rgba(34,211,238,.35),0 0 22px -4px rgba(34,211,238,.5);
+    --glow-green:0 0 0 1px rgba(34,197,94,.35),0 0 22px -4px rgba(34,197,94,.5);
+    --mono:'Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --term:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --hud:'Share Tech Mono',var(--mono);
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+    --maxw:1180px;
   }
   *{box-sizing:border-box}
-  body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--paper);color:var(--ink);margin:0;line-height:1.5}
-  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
-  h1{font-size:1.7rem;margin:0 0 4px}
-  .sub{color:var(--mute);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;margin-bottom:22px}
-  .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--run);margin-right:6px;animation:pulse 1.4s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .grid{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start}
-  .cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:14px 20px;min-width:84px;text-align:center}
-  .card .num{font-size:1.6rem;font-weight:700}
-  .card .lbl{font-family:ui-monospace,monospace;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
-  .kev{background:#fdf0ec;border-left:4px solid var(--p0);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:14px}
-  .panelbox{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:16px 18px;margin-bottom:18px}
-  .panelbox h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 12px}
-  .roster{display:flex;gap:10px;flex-wrap:wrap}
-  .agent{display:flex;align-items:center;gap:8px;border:1px solid var(--rule);border-radius:999px;padding:6px 12px;font-size:13px}
-  .agent .dot{width:9px;height:9px;border-radius:50%}
-  .agent.running{border-color:var(--run);background:#fbf2e9}
-  .agent.running .dot{background:var(--run);animation:pulse 1.4s infinite}
-  .agent.done .dot{background:var(--done)}
-  .agent.idle{color:var(--mute)}
-  .agent.idle .dot{background:var(--idle)}
-  .pipe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:ui-monospace,monospace;font-size:12.5px}
-  .pipe .step{padding:3px 9px;border-radius:6px;border:1px solid var(--rule)}
-  .pipe .step.done{background:#eef1e9;border-color:#cfd8c2}
-  .pipe .step.running{background:#fbf2e9;border-color:var(--run);font-weight:700}
-  .pipe .arrow{color:var(--mute)}
-  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--rule);border-radius:12px;overflow:hidden;font-size:13.5px}
-  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #eee7d8;vertical-align:top}
-  th{background:#faf8f2;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute)}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+  /* backdrop layers (cohesion con el landing) */
+  .bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(rgba(34,211,238,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.035) 1px,transparent 1px);
+    background-size:48px 48px;mask-image:radial-gradient(ellipse 85% 55% at 50% 0%,#000 30%,transparent 80%)}
+  .bg-glow{position:fixed;z-index:0;pointer-events:none;filter:blur(90px);opacity:.45}
+  .bg-glow.g1{top:-200px;left:-140px;width:520px;height:520px;background:radial-gradient(circle,rgba(34,211,238,.32),transparent 65%)}
+  .bg-glow.g2{top:420px;right:-180px;width:560px;height:560px;background:radial-gradient(circle,rgba(34,197,94,.18),transparent 65%)}
+  .scanline{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.35;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.18) 2px 3px);mix-blend-mode:overlay}
+  @media (prefers-reduced-motion:reduce){.scanline{display:none}}
+
+  .wrap{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:34px 24px 90px}
+
+  /* header */
+  .brand{font-family:var(--hud);font-size:clamp(24px,4vw,34px);letter-spacing:1px;display:flex;align-items:center;gap:12px;margin:0 0 6px;flex-wrap:wrap}
+  .brand .bdot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);animation:pulse 2.2s infinite}
+  .brand .slash{color:var(--cyan)}
+  .brand .liveword{font-family:var(--mono);font-size:12px;color:var(--green-soft);border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.07);border-radius:999px;padding:2px 10px;letter-spacing:1px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .sub{color:var(--ink-mute);font-family:var(--mono);font-size:12.5px;margin-bottom:26px;overflow-wrap:anywhere}
+  .sub b{color:var(--ink-soft)}
+
+  /* eyebrow / section label */
+  .eyebrow{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:var(--cyan);display:inline-flex;align-items:center;gap:10px;margin:0 0 14px}
+  .eyebrow::before{content:"";width:24px;height:1px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+
+  /* KEV alert (full border, sin side-stripe) */
+  .alert{display:flex;gap:15px;align-items:flex-start;border:1px solid rgba(245,158,11,.32);border-radius:14px;background:linear-gradient(180deg,rgba(245,158,11,.08),transparent);padding:18px 20px;margin-bottom:24px}
+  .alert .aic{flex:0 0 auto;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:rgba(245,158,11,.14);color:var(--amber);font-size:20px}
+  .alert .atxt{font-size:14px;color:var(--ink-soft)}
+  .alert .atxt b{color:var(--amber)}
+
+  /* stats strip */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:26px}
+  .stat{background:var(--bg-2);padding:22px 16px;text-align:center}
+  .stat .n{font-family:var(--hud);font-size:30px;line-height:1;color:var(--cyan)}
+  .stat .l{font-family:var(--mono);font-size:11px;color:var(--ink-mute);margin-top:8px;letter-spacing:.5px;text-transform:uppercase}
+
+  .block{margin-bottom:26px}
+  .surface{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg-2))}
+
+  /* pipeline graph (escala al ancho, sin scroll horizontal) */
+  .graphwrap{padding:22px 22px 16px}
+  .nowline{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{font-family:var(--mono);font-size:12px;padding:4px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-mute);background:rgba(255,255,255,.02);display:inline-flex;align-items:center;gap:7px}
+  .chip.run{border-color:var(--cyan);background:rgba(34,211,238,.08);color:var(--cyan-soft);font-weight:600;box-shadow:var(--glow-cyan)}
+  .chip.block{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.08);color:#fca5a5;font-weight:600}
+  .graphscroll{overflow:visible}
+  .graph{position:relative}
+  .gnode{position:absolute;width:132px;height:58px;background:rgba(255,255,255,.025);border:1px solid var(--line-2);border-radius:11px;padding:9px 11px;display:flex;flex-direction:column;justify-content:center;gap:3px;font-family:var(--mono);transition:box-shadow .2s,border-color .2s;cursor:help;outline:none}
+  .gnode:hover,.gnode:focus-visible{z-index:30}
+  .gnode:focus-visible{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+  /* tooltip HUD: describe que hace el agente */
+  .gtip{position:absolute;left:50%;top:calc(100% + 11px);transform:translateX(-50%) translateY(4px);width:232px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;box-shadow:0 18px 44px -14px rgba(0,0,0,.85),var(--glow-cyan);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease-out,transform .16s ease-out;z-index:40;text-align:left;white-space:normal}
+  .gtip::after{content:"";position:absolute;left:50%;transform:translateX(-50%);border:6px solid transparent}
+  .gnode:not(.tipup) .gtip::after{bottom:100%;border-bottom-color:var(--line-2)}
+  .gnode.tipup .gtip{top:auto;bottom:calc(100% + 11px);transform:translateX(-50%) translateY(-4px)}
+  .gnode.tipup .gtip::after{top:100%;border-top-color:var(--line-2)}
+  .gnode:hover .gtip,.gnode:focus-visible .gtip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+  .gtip-h{font-family:var(--mono);font-size:11.5px;color:var(--cyan-soft);font-weight:700;margin-bottom:5px;display:flex;gap:6px;align-items:center}
+  .gtip-b{font-family:var(--sans);font-size:11.5px;line-height:1.5;color:var(--ink-soft)}
+  .gnode .gtop{display:flex;align-items:center;gap:7px}
+  .gnode .glabel{font-weight:700;font-size:12.5px;color:var(--ink)}
+  .gnode .gagent{font-size:10px;color:var(--ink-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gnode.done{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.05)}
+  .gnode.running{border-color:var(--cyan);background:rgba(34,211,238,.07);box-shadow:var(--glow-cyan)}
+  .gnode.idle{opacity:.5}
+  .ic{width:16px;height:16px;border-radius:50%;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1}
+  .ic.done{background:var(--green);color:var(--bg);font-weight:800}
+  .ic.idle{border:2px solid var(--ink-mute)}
+  .ic.spin{border:2.5px solid rgba(34,211,238,.25);border-top-color:var(--cyan);animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .edge{fill:none;stroke:var(--line-2);stroke-width:2}
+  .edge.done{stroke:rgba(34,197,94,.5)}
+  .edge.active{stroke:var(--cyan);stroke-width:2.4;stroke-dasharray:5 4;animation:dash 1s linear infinite;filter:drop-shadow(0 0 4px rgba(34,211,238,.6))}
+  @keyframes dash{to{stroke-dashoffset:-18}}
+
+  /* bitacora = terminal */
+  .terminal{overflow:hidden;box-shadow:0 30px 80px -40px rgba(0,0,0,.8)}
+  .term-bar{display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+  .term-bar .tdot{width:11px;height:11px;border-radius:50%}
+  .term-bar .r{background:#ff5f56}.term-bar .y{background:#ffbd2e}.term-bar .g{background:#27c93f}
+  .term-bar .ttitle{margin-left:8px;font-family:var(--mono);font-size:12px;color:var(--ink-mute)}
+  .blog{max-height:340px;overflow-y:auto;overflow-x:hidden;padding:14px 16px;font-family:var(--term);font-size:13px;line-height:1.5}
+  .brow{display:flex;gap:12px;padding:3px 6px;border-radius:6px;overflow-wrap:anywhere}
+  .brow .bt{color:var(--ink-mute);font-size:11px;white-space:nowrap;flex:0 0 auto;opacity:.8}
+  .brow.find{background:rgba(34,211,238,.05)}
+  .brow.block{background:rgba(239,68,68,.07)}
+  .brow .g{color:var(--green-soft)}.brow .c{color:var(--cyan-soft)}.brow .a{color:var(--amber)}.brow .r{color:#fca5a5}.brow .m{color:var(--ink-mute)}
+  .brow b{color:var(--ink)}
+  .src{font-family:var(--mono);font-size:10.5px;color:var(--ink-mute);border:1px solid var(--line-2);border-radius:5px;padding:0 6px;margin-left:2px}
+
+  /* severity chips + tags */
+  .sev{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.5px;border-radius:5px;padding:1px 7px;border:1px solid currentColor}
+  .tag{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:5px;padding:1px 6px;color:var(--bg)}
+
+  /* lifecycle tabs */
+  .tabs{display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap}
+  .tab{font-family:var(--mono);font-size:13px;color:var(--ink-mute);background:transparent;border:1px solid transparent;border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:9px;transition:color .2s,border-color .2s,background .2s}
+  .tab:hover{color:var(--ink-soft)}
+  .tab.on{color:var(--ink);border-color:var(--line-2);background:rgba(255,255,255,.03)}
+  .tab .tdot{width:8px;height:8px;border-radius:50%}
+  .tab .tdot.encontrados{background:var(--amber)}
+  .tab .tdot.mitigando{background:var(--cyan)}
+  .tab .tdot.arreglados{background:var(--green)}
+  .tab .tdot.filtrados{background:var(--ink-mute)}
+  .tab .tcount{font-size:11px;color:var(--ink-mute);background:rgba(255,255,255,.05);border-radius:999px;padding:1px 8px;min-width:22px;text-align:center}
+  .tab.on .tcount{color:var(--ink);background:rgba(34,211,238,.12)}
+
+  /* lifecycle state badge (en la fila) */
+  .lbadge{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.4px;padding:2px 9px;border-radius:6px;border:1px solid currentColor;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .lbadge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 auto}
+  .lbadge.encontrados{color:var(--amber)}
+  .lbadge.mitigando{color:var(--cyan-soft)}
+  .lbadge.arreglados{color:var(--green-soft)}
+  .lbadge.filtrados{color:var(--ink-mute)}
+
+  /* findings table */
+  .tablecard{overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:auto}
+  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-mute)}
   tr.frow{cursor:pointer}
-  tr.frow:hover{background:#faf8f2}
-  code{background:rgba(107,125,92,.12);padding:1px 5px;border-radius:4px;font-size:.85em}
-  .badge{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#fff}
-  .pill{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;border:1px solid var(--rule);color:var(--mute)}
-  .detail{background:#fbf9f3}
-  .detail dl{margin:0;display:grid;grid-template-columns:140px 1fr;gap:6px 14px;font-size:13px}
-  .detail dt{color:var(--mute);font-family:ui-monospace,monospace;font-size:11.5px;text-transform:uppercase}
-  .detail dd{margin:0}
-  .detail ol{margin:4px 0 0;padding-left:20px}
-  .timeline{max-height:70vh;overflow:auto}
-  .ev{display:flex;gap:8px;font-size:12.5px;padding:6px 0;border-bottom:1px solid #eee7d8}
-  .ev .t{color:var(--mute);font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap}
-  .empty{color:var(--mute);text-align:center;padding:40px;font-size:14px}
-  footer{margin-top:24px;color:var(--mute);font-size:11.5px;font-family:ui-monospace,monospace}
-  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  tr.frow:hover{background:rgba(34,211,238,.04)}
+  tr.frow.arreglados{background:rgba(34,197,94,.035)}
+  tr.frow.arreglados:hover{background:rgba(34,197,94,.07)}
+  td{color:var(--ink-soft);overflow-wrap:anywhere}
+  code{font-family:var(--mono);background:rgba(34,211,238,.08);color:var(--cyan-soft);padding:1px 5px;border-radius:4px;font-size:.86em;overflow-wrap:anywhere;word-break:break-word}
+  .pill{font-family:var(--mono);display:inline-block;padding:1px 8px;border-radius:5px;font-size:11px;border:1px solid var(--line-2);color:var(--ink-mute)}
+  @keyframes rowin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  tbody.swap tr.frow{animation:rowin .35s cubic-bezier(.2,.7,.2,1) both}
+
+  /* detalle de vulnerabilidad */
+  .detail{background:var(--panel-2)}
+  .detail .dcell{padding:18px 18px 6px}
+  .dhead{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .dchips{display:flex;gap:7px;flex-wrap:wrap}
+  .dchip{font-family:var(--mono);font-size:11px;color:var(--ink-mute);border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+  .dchip b{color:var(--ink-soft)}
+  .facets{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:0 30px}
+  .facet{padding:13px 0;border-bottom:1px solid var(--line)}
+  .facet.wide{grid-column:1/-1}
+  .facet.good{background:linear-gradient(180deg,rgba(34,197,94,.06),transparent);border-radius:8px;padding:13px 14px;margin:4px 0}
+  .flabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan-soft);margin-bottom:5px;display:flex;align-items:center;gap:7px}
+  .facet.good .flabel{color:var(--green-soft)}
+  .fval{font-size:13px;color:var(--ink-soft);overflow-wrap:anywhere}
+  .fval .ok{color:var(--green-soft)}
+  /* kill chain */
+  .killchain{list-style:none;margin:8px 0 2px;padding:0}
+  .killchain li{display:flex;gap:12px;align-items:flex-start;padding:6px 0;position:relative}
+  .killchain li:not(:last-child)::before{content:"";position:absolute;left:11px;top:27px;bottom:-6px;width:1px;background:rgba(239,68,68,.3)}
+  .killchain .kn{flex:0 0 auto;width:23px;height:23px;border-radius:50%;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#fca5a5;font-family:var(--hud);font-size:12px;display:grid;place-items:center}
+  .killchain .kt{font-size:13px;color:var(--ink-soft);padding-top:2px;overflow-wrap:anywhere}
+  /* lifecycle track (en detalle) */
+  .ltrack{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px}
+  .lstep{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-mute);white-space:nowrap}
+  .lstep .ld{width:8px;height:8px;border-radius:50%;background:var(--ink-mute)}
+  .lstep.past{color:var(--green-soft);border-color:rgba(34,197,94,.4)}
+  .lstep.past .ld{background:var(--green)}
+  .lstep.done{color:var(--green-soft);border-color:var(--green);background:rgba(34,197,94,.1)}
+  .lstep.done .ld{background:var(--green)}
+  .lstep.cur{color:var(--cyan-soft);border-color:var(--cyan);background:rgba(34,211,238,.08);box-shadow:var(--glow-cyan)}
+  .lstep.cur .ld{background:var(--cyan);animation:pulse 1.6s infinite}
+  .lstep.future{opacity:.5}
+  .lbar{width:20px;height:1px;background:var(--line-2);flex:0 0 auto}
+  .lbar.on{background:rgba(34,197,94,.55)}
+  .ltrack.filtered{color:var(--ink-mute);font-style:italic;border:1px dashed var(--line-2);border-radius:999px;padding:4px 12px}
+
+  /* comandos copiables de Claude Code */
+  .cmdbar{display:flex;gap:10px;flex-wrap:wrap}
+  .cmd{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);background:var(--bg-2);border:1px solid var(--line-2);border-radius:10px;padding:8px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:9px;transition:border-color .2s,box-shadow .2s,color .2s;text-align:left}
+  .cmd:hover{border-color:var(--cyan);color:var(--ink);box-shadow:var(--glow-cyan)}
+  .cmd.primary{border-color:rgba(34,197,94,.4)}
+  .cmd.primary:hover{border-color:var(--green);box-shadow:var(--glow-green)}
+  .cmd .cmd-ic{font-size:13px;color:var(--ink-mute)}
+  .cmd:hover .cmd-ic{color:var(--cyan)}
+  .cmd .cmd-l{font-weight:600}
+  .cmd .cmd-c{font-size:11.5px;color:var(--cyan-soft);background:rgba(34,211,238,.07);padding:1px 6px;border-radius:5px}
+  .cmd.primary .cmd-c{color:var(--green-soft);background:rgba(34,197,94,.08)}
+  .cmd.ok{border-color:var(--green);color:var(--green-soft)}
+  .cmd.ok .cmd-ic{color:var(--green)}
+  .csel{width:36px;text-align:center}
+  .csel input{accent-color:var(--cyan);cursor:pointer;width:15px;height:15px}
+  tr.frow.sel{background:rgba(34,211,238,.07)}
+  .copybtn{font-family:var(--mono);background:rgba(255,255,255,.03);border:1px solid var(--line-2);color:var(--ink-mute);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:13px;transition:color .2s,border-color .2s,box-shadow .2s}
+  .copybtn:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+  .copybtn.ok{color:var(--green);border-color:var(--green)}
+  .copy-na{color:var(--ink-mute);opacity:.5}
+  .seltool{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(34,211,238,.04)}
+  .seln{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+  .seln b{color:var(--cyan-soft)}
+  .selcmds{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .selclear{background:transparent;border:1px solid var(--line-2);color:var(--ink-mute);border-radius:8px;padding:7px 11px;cursor:pointer;font-family:var(--mono);font-size:12px}
+  .selclear:hover{color:var(--ink)}
+  .dcmds{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+  .dcmds-l{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-mute);margin-right:2px}
+
+  .empty{color:var(--ink-mute);text-align:center;padding:44px;font-size:14px}
+  footer{margin-top:30px;color:var(--ink-mute);font-family:var(--mono);font-size:11.5px;border-top:1px solid var(--line);padding-top:18px;overflow-wrap:anywhere}
+  footer b{color:var(--cyan-soft)}
+
+  @media (max-width:640px){
+    .wrap{padding:24px 16px 70px}
+    .facets{grid-template-columns:1fr}
+    /* en movil oculta OWASP/CWE (col 5) y Explotable (col 6); +1 por checkbox */
+    th:nth-child(5),td:nth-child(5),th:nth-child(6),td:nth-child(6){display:none}
+  }
 </style>
 </head>
 <body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-glow g1" aria-hidden="true"></div>
+<div class="bg-glow g2" aria-hidden="true"></div>
+<div class="scanline" aria-hidden="true"></div>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useCallback,Fragment} = React;
+const {useState,useEffect,useCallback,useRef,Fragment} = React;
 
 // Etapas canonicas (la clave 'key' DEBE coincidir con activity.py y la presentacion)
 const STAGES = [
-  {key:"detect",   label:"detect",   icon:"🧭", agent:null,                  done:(L)=> (L.run&&L.run.stacks||[]).length>0},
-  {key:"RECON",    label:"RECON",    icon:"🛰", agent:"recon-cartographer",  done:(L)=> !!L.attack_surface},
-  {key:"SAST",     label:"SAST",     icon:"🔬", agent:"sast-analyst",        done:(L)=> (L.findings||[]).some(f=>f.sast)},
-  {key:"INTEL",    label:"INTEL",    icon:"📡", agent:"threat-intel-scout",  done:(L)=> (L.findings||[]).some(f=>f.intel)},
-  {key:"RED-TEAM", label:"RED-TEAM", icon:"🎯", agent:"redteam-whitehat",    done:(L)=> (L.findings||[]).some(f=>f.exploitability)},
-  {key:"TRIAGE",   label:"TRIAGE",   icon:"⚖️", agent:"triage-judge",        done:(L)=> (L.findings||[]).some(f=>f.triage)},
-  {key:"plan",     label:"plan",     icon:"🗺", agent:null,                  done:(L)=> !!L.plan_ref},
-  {key:"FIX",      label:"FIX",      icon:"🔧", agent:"appsec-fixer",        done:(L)=> (L.findings||[]).some(f=>f.fix)},
-  {key:"VERIFY",   label:"VERIFY",   icon:"✅", agent:"verify-engineer",     done:(L)=> (L.findings||[]).some(f=>f.verification)},
+  {key:"detect",   label:"detect",   icon:"🧭", agent:null,                  desc:"Detecta los stacks del repo (Django, Next.js, Angular, .NET) y delimita el scope por paquete.", done:(L)=> (L.run&&L.run.stacks||[]).length>0},
+  {key:"RECON",    label:"RECON",    icon:"🛰", agent:"recon-cartographer",  desc:"Mapea la superficie de ataque: entrypoints, sources/sinks y trust boundaries. Modela amenazas (STRIDE). No busca vulnerabilidades concretas.", done:(L)=> !!L.attack_surface},
+  {key:"SAST",     label:"SAST",     icon:"🔬", agent:"sast-analyst",        desc:"SAST del código propio (Semgrep, Bandit, ESLint-security, Roslyn). Sigue flujos source→sink con taint analysis. No escanea dependencias.", done:(L)=> (L.findings||[]).some(f=>f.sast)},
+  {key:"INTEL",    label:"INTEL",    icon:"📡", agent:"threat-intel-scout",  desc:"SCA de dependencias de producción. Cruza con OSV/NVD/CISA KEV/EPSS para hallar CVEs. Solo lee fuentes oficiales.", done:(L)=> (L.findings||[]).some(f=>f.intel)},
+  {key:"RED-TEAM", label:"RED-TEAM", icon:"🎯", agent:"redteam-whitehat",    desc:"Confirma la explotabilidad razonando como atacante. Produce solo PoCs conceptuales, nunca exploits desplegables.", done:(L)=> (L.findings||[]).some(f=>f.exploitability)},
+  {key:"TRIAGE",   label:"TRIAGE",   icon:"⚖️", agent:"triage-judge",        desc:"Prioriza con CVSS + EPSS + CISA KEV, deduplica y filtra falsos positivos. KEV es override de prioridad.", done:(L)=> (L.findings||[]).some(f=>f.triage)},
+  {key:"plan",     label:"plan",     icon:"🗺", agent:null,                  desc:"Genera el plan de remediación priorizado (Inmediato / Esta semana / Este mes).", done:(L)=> !!L.plan_ref},
+  {key:"FIX",      label:"FIX",      icon:"🔧", agent:"appsec-fixer",        desc:"Aplica el fix de causa raíz (ASVS, Cheat Sheets) en una branch vuln-hunter/*. No commitea sin aprobación humana.", done:(L)=> (L.findings||[]).some(f=>f.fix)},
+  {key:"VERIFY",   label:"VERIFY",   icon:"✅", agent:"verify-engineer",     desc:"Re-escanea el código parcheado y corre los tests. Verificación honesta: declara PARCIAL si no hay cobertura.", done:(L)=> (L.findings||[]).some(f=>f.verification)},
 ];
 
-const PRIO = {P0:"#b4532f",P1:"#c0772f",P2:"#c89a3c",P3:"#6b7d5c",FILTERED:"#8a847a"};
+// Topologia del grafo: columna/fila por etapa. RECON se bifurca a SAST e INTEL
+// (corren en paralelo) y ambas reconvergen en RED-TEAM.
+const GPOS = {
+  "detect":{col:0,row:1}, "RECON":{col:1,row:1},
+  "SAST":{col:2,row:0}, "INTEL":{col:2,row:2},
+  "RED-TEAM":{col:3,row:1}, "TRIAGE":{col:4,row:1},
+  "plan":{col:5,row:1}, "FIX":{col:6,row:1}, "VERIFY":{col:7,row:1},
+};
+const GEDGES = [
+  ["detect","RECON"],
+  ["RECON","SAST"],["RECON","INTEL"],
+  ["SAST","RED-TEAM"],["INTEL","RED-TEAM"],
+  ["RED-TEAM","TRIAGE"],["TRIAGE","plan"],["plan","FIX"],["FIX","VERIFY"],
+];
+const COLW=158, NODEW=132, NODEH=58, ROWY={0:8,1:92,2:176}, GW=COLW*7+NODEW, GH=242;
+const nx=(k)=>GPOS[k].col*COLW;
+const ny=(k)=>ROWY[GPOS[k].row];
+
+const PRIO = {P0:"#ef4444",P1:"#fb923c",P2:"#f59e0b",P3:"#22c55e",FILTERED:"#6b7889"};
 const PRIO_ORDER = {P0:0,P1:1,P2:2,P3:3,FILTERED:9};
 const STATUS_LABEL = {hypothesis:"Hipotesis",confirmed:"Confirmada",triaged:"Triada",planned:"Planificada",fixed:"Corregida",closed:"Cerrada",filtered:"Filtrada"};
+
+// Ciclo de vida de un hallazgo -> bucket de pestania.
+const LIFE_STEPS = ["encontrados","mitigando","arreglados"];
+const LIFE_LABEL = {encontrados:"Encontrado",mitigando:"Mitigando",arreglados:"Arreglado",filtrados:"Filtrado"};
+function lifecycleOf(status){
+  if(status==="closed") return "arreglados";
+  if(status==="fixed") return "mitigando";
+  if(status==="filtered") return "filtrados";
+  return "encontrados";
+}
 
 async function fetchJSON(url){
   const r = await fetch(url + "?t=" + Date.now());
@@ -117,6 +324,97 @@ function stageStatus(stage, idx, activity, ledger, runningIdx){
   return stage.done(ledger) ? "done" : "idle";
 }
 
+function SevChip({p}){
+  if(!p || p==="—") return null;
+  return <span className="sev" style={{color:PRIO[p]||"var(--ink-mute)"}}>{p}</span>;
+}
+
+// ===== Comandos de Claude Code copiables =====
+function copyText(t){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t));
+  } else { fallbackCopy(t); }
+}
+function fallbackCopy(t){
+  const ta=document.createElement("textarea"); ta.value=t;
+  ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+  ta.select(); try{document.execCommand("copy")}catch(e){} document.body.removeChild(ta);
+}
+// Comando recomendado para UN hallazgo segun su estado en el ciclo de vida.
+function recCommand(f){
+  const life = lifecycleOf(f.status);
+  if(life==="arreglados"||life==="filtrados") return null;
+  if(life==="mitigando") return "/vuln-hunter:verify "+f.id;
+  if(!f.exploitability) return "/vuln-hunter:redteam "+f.id;
+  if(!f.triage) return "/vuln-hunter:triage";
+  return "/vuln-hunter:fix "+f.id;
+}
+// Siguiente paso de la cadena segun el estado agregado del ledger.
+function nextStep(findings){
+  if(!findings.length) return "/vuln-hunter:scan";
+  if(findings.some(f=>lifecycleOf(f.status)==="encontrados" && !f.exploitability)) return "/vuln-hunter:redteam all";
+  if(findings.some(f=>f.exploitability && !f.triage)) return "/vuln-hunter:triage";
+  if(findings.some(f=>lifecycleOf(f.status)==="encontrados")) return "/vuln-hunter:fix all";
+  if(findings.some(f=>lifecycleOf(f.status)==="mitigando")) return "/vuln-hunter:verify all";
+  return "/vuln-hunter:report";
+}
+// Boton que copia un comando con feedback visual.
+function CmdChip({label,cmd,kind}){
+  const [ok,setOk] = useState(false);
+  if(!cmd) return null;
+  const click=(e)=>{ e.stopPropagation(); copyText(cmd); setOk(true); setTimeout(()=>setOk(false),1400); };
+  return (
+    <button className={"cmd "+(kind||"")+(ok?" ok":"")} onClick={click} title={"Copiar: "+cmd}>
+      <span className="cmd-ic">{ok?"✓":"⧉"}</span>
+      {label && <span className="cmd-l">{label}</span>}
+      <code className="cmd-c">{cmd}</code>
+    </button>
+  );
+}
+// Boton de copia compacto (solo icono) para una fila.
+function CopyBtn({cmd}){
+  const [ok,setOk] = useState(false);
+  if(!cmd) return <span className="copy-na" title="Sin acción pendiente">—</span>;
+  const click=(e)=>{ e.stopPropagation(); copyText(cmd); setOk(true); setTimeout(()=>setOk(false),1400); };
+  return <button className={"copybtn"+(ok?" ok":"")} onClick={click} title={"Copiar: "+cmd}>{ok?"✓":"⧉"}</button>;
+}
+// Barra de acciones globales: status, reanudar la cadena, siguiente paso.
+function ActionsBar({ledger,findings}){
+  const scope = (ledger.run||{}).scope;
+  const resume = "/vuln-hunter:hunt"+(scope?" "+scope:"");
+  return (
+    <div className="block">
+      <div className="eyebrow">Acciones · copiar y pegar en Claude Code</div>
+      <div className="cmdbar">
+        <CmdChip label="Estado" cmd="/vuln-hunter:status"/>
+        <CmdChip label="Reanudar cadena" cmd={resume} kind="primary"/>
+        <CmdChip label="Siguiente paso" cmd={nextStep(findings)} kind="next"/>
+      </div>
+    </div>
+  );
+}
+
+// Track visual del ciclo de vida: Encontrado -> Mitigando -> Arreglado.
+function LifecycleTrack({status}){
+  const cur = lifecycleOf(status);
+  if(cur==="filtrados") return <span className="ltrack filtered">Filtrado (no priorizado)</span>;
+  const idx = LIFE_STEPS.indexOf(cur);
+  const allDone = cur==="arreglados";
+  return (
+    <div className="ltrack">
+      {LIFE_STEPS.map((s,i)=>{
+        const state = i<idx ? "past" : (i===idx ? (allDone?"done":"cur") : "future");
+        return (
+          <Fragment key={s}>
+            {i>0 && <span className={"lbar "+(i<=idx?"on":"")}></span>}
+            <span className={"lstep "+state}><span className="ld"></span>{LIFE_LABEL[s]}</span>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function SummaryCards({findings}){
   const counts = {}; let kev=0;
   findings.forEach(f=>{
@@ -126,125 +424,246 @@ function SummaryCards({findings}){
   });
   const order = Object.keys(counts).sort((a,b)=>(PRIO_ORDER[a]??5)-(PRIO_ORDER[b]??5));
   return (
-    <div className="cards">
-      <div className="card"><div className="num">{findings.length}</div><div className="lbl">Hallazgos</div></div>
+    <div className="stats">
+      <div className="stat"><div className="n">{findings.length}</div><div className="l">Hallazgos</div></div>
       {order.map(p=>(
-        <div className="card" key={p}><div className="num" style={{color:PRIO[p]||"#1a1915"}}>{counts[p]}</div><div className="lbl">{p}</div></div>
+        <div className="stat" key={p}><div className="n" style={{color:PRIO[p]||"var(--cyan)"}}>{counts[p]}</div><div className="l">{p}</div></div>
       ))}
-      <div className="card"><div className="num" style={{color:"#b4532f"}}>{kev}</div><div className="lbl">CISA KEV</div></div>
+      <div className="stat"><div className="n" style={{color:"var(--amber)"}}>{kev}</div><div className="l">CISA KEV</div></div>
     </div>
   );
 }
 
-function AgentRoster({activity,ledger}){
+function StatusIcon({st,small}){
+  const sty = small ? {width:11,height:11,fontSize:8} : null;
+  if(st==="running") return <span className="ic spin" style={sty}></span>;
+  if(st==="done") return <span className="ic done" style={sty}>✓</span>;
+  return <span className="ic idle" style={sty}></span>;
+}
+
+// Grafo de pipeline estilo GitHub Actions. Escala al ancho del contenedor con un
+// transform (sin scroll horizontal) y muestra el fork paralelo SAST/INTEL.
+function PipelineGraph({activity,ledger}){
+  const wrapRef = useRef(null);
+  const [scale,setScale] = useState(1);
+  useEffect(()=>{
+    const el = wrapRef.current; if(!el) return;
+    const measure = ()=>{ const w=el.clientWidth; if(w) setScale(Math.min(1, w/GW)); };
+    measure();
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    return ()=>ro.disconnect();
+  },[]);
   const runningIdx = runningStageIndex(activity);
-  const items = STAGES.map((s,i)=>({s,i})).filter(x=>x.s.agent);
+  const statusOf = {};
+  STAGES.forEach((s,i)=>{ statusOf[s.key] = stageStatus(s,i,activity,ledger,runningIdx); });
+  // Todas las etapas activas a la vez (soporta agentes en paralelo: SAST + INTEL).
+  const runningStages = STAGES.filter(s=>statusOf[s.key]==="running");
+  const runDone = activity.some(e=>e.type==="run:done");
+  const blocked = activity.some(e=>e.type==="deploy:blocked");
   return (
-    <div className="panelbox">
-      <h2>Agentes</h2>
-      <div className="roster">
-        {items.map(({s,i})=>{
-          const st = stageStatus(s, i, activity, ledger, runningIdx);
-          return (
-            <div className={"agent "+st} key={s.key} title={s.agent}>
-              <span className="dot"></span>{s.icon} {s.label}
-              <span style={{fontSize:11,color:"var(--mute)"}}>· {st}</span>
-            </div>
-          );
-        })}
+    <div className="block surface graphwrap">
+      <div className="eyebrow">Pipeline</div>
+      <div className="nowline">
+        {runningStages.length>0
+          ? <span className="chip run"><StatusIcon st="running" small={true}/>Trabajando: {runningStages.map(s=>s.agent||s.label).join(", ")}</span>
+          : <span className="chip">{runDone?"Pipeline finalizado":"Pipeline en reposo"}</span>}
+        {blocked && <span className="chip block">⛔ deploy bloqueado</span>}
+      </div>
+      <div className="graphscroll" ref={wrapRef} style={{height:GH*scale}}>
+        <div className="graph" style={{width:GW,height:GH,transform:"scale("+scale+")",transformOrigin:"top left"}}>
+          <svg width={GW} height={GH} style={{position:"absolute",left:0,top:0}}>
+            {GEDGES.map(([a,b],i)=>{
+              const x1=nx(a)+NODEW, y1=ny(a)+NODEH/2, x2=nx(b), y2=ny(b)+NODEH/2;
+              const dx=Math.max(28,(x2-x1)/2);
+              const d=`M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
+              const sa=statusOf[a], sb=statusOf[b];
+              const cls = sb==="running" ? "edge active" : ((sa==="done"&&sb==="done") ? "edge done" : "edge");
+              return <path key={i} className={cls} d={d}/>;
+            })}
+          </svg>
+          {STAGES.map(s=>{
+            const st = statusOf[s.key];
+            const tipup = GPOS[s.key].row===2;
+            return (
+              <div key={s.key} className={"gnode "+st+(tipup?" tipup":"")} style={{left:nx(s.key),top:ny(s.key)}} tabIndex={0} aria-label={(s.agent||s.label)+": "+s.desc}>
+                <div className="gtop"><StatusIcon st={st}/><span>{s.icon}</span><span className="glabel">{s.label}</span></div>
+                <div className="gagent">{s.agent||"sin agente"} · {st}</div>
+                <div className="gtip" role="tooltip">
+                  <div className="gtip-h">{s.icon} {s.agent||s.label}</div>
+                  <div className="gtip-b">{s.desc}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function PipelineBar({activity,ledger}){
-  const runningIdx = runningStageIndex(activity);
+// Bitacora viva como terminal: log cronologico (lo mas reciente abajo,
+// auto-scroll) de lo que va pasando. Los hallazgos se resaltan y se enriquecen.
+function Bitacora({activity,findings}){
+  const ref = useRef(null);
+  useEffect(()=>{ if(ref.current) ref.current.scrollTop = ref.current.scrollHeight; },[activity.length]);
+  const byId = {}; findings.forEach(f=>{ byId[f.id]=f; });
   return (
-    <div className="panelbox">
-      <h2>Flujo</h2>
-      <div className="pipe">
-        {STAGES.map((s,i)=>{
-          const st = stageStatus(s, i, activity, ledger, runningIdx);
-          const cls = st==="running"?"running":(st==="done"?"done":"");
-          return (
-            <Fragment key={s.key}>
-              {i>0 && <span className="arrow">→</span>}
-              <span className={"step "+cls}>{s.label} {st==="done"?"✓":st==="running"?"●":"○"}</span>
-            </Fragment>
-          );
-        })}
+    <div className="block">
+      <div className="eyebrow">Bitácora · qué se va encontrando</div>
+      <div className="surface terminal">
+        <div className="term-bar"><span className="tdot r"></span><span className="tdot y"></span><span className="tdot g"></span><span className="ttitle">activity.jsonl · tail -f</span></div>
+        <div className="blog" ref={ref}>
+          {activity.length===0 && <div className="empty">Sin eventos todavía. Corre <code>/vuln-hunter:hunt</code>.</div>}
+          {activity.map((e,i)=>{
+            let body, cls="brow";
+            if(e.type==="run:start") body=<span className="g">▶ auditoría iniciada ({e.scope||"repo"})</span>;
+            else if(e.type==="run:done") body=<span className="m">■ auditoría finalizada</span>;
+            else if(e.type==="stage:start") body=<span><span className="c">●</span> empieza {e.stage}{e.agent?" ("+e.agent+")":""}</span>;
+            else if(e.type==="stage:end") body=<span><span className="g">✓</span> termina {e.stage}{e.summary?" · "+e.summary:""}</span>;
+            else if(e.type==="finding:new"){
+              cls="brow find";
+              const f=byId[e.id]||{}; const p=(f.triage||{}).priority; const kev=(f.intel||{}).in_cisa_kev;
+              body=(<span><span className="g">＋</span> <b>{e.id}</b> {e.title||f.title||""} {p && <SevChip p={p}/>} {kev && <span className="tag" style={{background:"var(--amber)"}}>KEV</span>} <span className="src">{e.source||f.source||""}</span></span>);
+            }
+            else if(e.type==="deploy:blocked"){ cls="brow block"; body=<span className="r">⛔ deploy bloqueado · {e.reason||""}</span>; }
+            else body=e.type;
+            return <div className={cls} key={(e.ts||"")+e.type+(e.id||e.stage||"")+i}><span className="bt">{(e.ts||"").replace("T"," ").slice(5,16)}</span><span>{body}</span></div>;
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
+function Facet({label,good,wide,children}){
+  return (
+    <div className={"facet"+(good?" good":"")+(wide?" wide":"")}>
+      <div className="flabel">{label}</div>
+      <div className="fval">{children}</div>
+    </div>
+  );
+}
+
+// Detalle enriquecido de un hallazgo: cabecera con ciclo de vida + chips, luego
+// facetas (solo las que tienen datos) y la cadena de explotacion como kill-chain.
 function FindingDetail({f}){
   const sast=f.sast||{}, ex=f.exploitability||{}, intel=f.intel||{}, tri=f.triage||{}, fix=f.fix||{}, ver=f.verification||{};
+  const chain = ex.conceptual_chain||[];
   return (
-    <td colSpan="6" className="detail">
-      <dl>
-        <dt>Ubicacion</dt><dd><code>{f.location||"—"}</code> · {f.cwe||""} · {f.owasp_2025||f.owasp_2021||""}</dd>
-        {sast.flow && (<Fragment><dt>Flujo SAST</dt><dd><code>{sast.flow}</code> (confianza {sast.confidence??"—"})</dd></Fragment>)}
-        {sast.hypothesis && (<Fragment><dt>Hipotesis</dt><dd>{sast.hypothesis}</dd></Fragment>)}
-        {ex.verdict && (<Fragment><dt>Explotable</dt><dd>{ex.verdict} — {ex.conditions||""}</dd></Fragment>)}
-        {(ex.conceptual_chain||[]).length>0 && (<Fragment><dt>Cadena (PoC conceptual)</dt><dd><ol>{ex.conceptual_chain.map((c,i)=><li key={i}>{c}</li>)}</ol></dd></Fragment>)}
-        {intel.package && (<Fragment><dt>Dependencia</dt><dd><code>{intel.package}@{intel.installed_version}</code> → fix {intel.fixed_version||"?"} · {(intel.cve_ids||[]).join(", ")} {intel.in_cisa_kev?"· KEV":""} {intel.epss!=null?("· EPSS "+intel.epss):""}</dd></Fragment>)}
-        {tri.rationale && (<Fragment><dt>Triage</dt><dd>{tri.priority} · CVSS {tri.cvss??"—"} (v{tri.cvss_version||"?"}) — {tri.rationale}</dd></Fragment>)}
-        {fix.root_cause && (<Fragment><dt>Fix (causa raiz)</dt><dd>{fix.root_cause} → {fix.summary||""} {fix.applied?"· aplicado al working tree":"· sin aplicar"} {fix.asvs?("· ASVS "+fix.asvs):""}</dd></Fragment>)}
-        {ver.verdict && (<Fragment><dt>Verificacion</dt><dd>{ver.verdict} — {ver.evidence||""}</dd></Fragment>)}
-      </dl>
+    <td colSpan="8" className="detail">
+      <div className="dcell">
+        <div className="dhead">
+          <LifecycleTrack status={f.status}/>
+          <div className="dchips">
+            {(f.triage||{}).priority && <span className="dchip"><b>{tri.priority}</b></span>}
+            {tri.cvss!=null && <span className="dchip">CVSS <b>{tri.cvss}</b> v{tri.cvss_version||"?"}</span>}
+            {(f.owasp_2025||f.owasp_2021) && <span className="dchip">{f.owasp_2025||f.owasp_2021}</span>}
+            {f.cwe && <span className="dchip">{f.cwe}</span>}
+            {f.source && <span className="dchip">{f.source}</span>}
+          </div>
+        </div>
+        <div className="dcmds">
+          <span className="dcmds-l">Atacar {f.id}:</span>
+          <CmdChip label="recomendado" cmd={recCommand(f)} kind="primary"/>
+          <CmdChip cmd={"/vuln-hunter:redteam "+f.id}/>
+          <CmdChip cmd={"/vuln-hunter:fix "+f.id}/>
+          <CmdChip cmd={"/vuln-hunter:verify "+f.id}/>
+        </div>
+        <div className="facets">
+          <Facet label="📍 Ubicación"><code>{f.location||"—"}</code></Facet>
+          {sast.hypothesis && <Facet label="🧠 Hipótesis">{sast.hypothesis}</Facet>}
+          {sast.flow && <Facet label="🔬 Flujo SAST"><code>{sast.flow}</code> · confianza {sast.confidence??"—"} · {sast.tool||""}</Facet>}
+          {intel.package && <Facet label="📡 Dependencia"><code>{intel.package}@{intel.installed_version}</code> → fix {intel.fixed_version||"?"} · {(intel.cve_ids||[]).join(", ")} {intel.in_cisa_kev?"· KEV":""} {intel.epss!=null?("· EPSS "+intel.epss):""}</Facet>}
+          {ex.verdict && <Facet label="🎯 Explotabilidad">{ex.verdict}{ex.conditions?" · "+ex.conditions:""}</Facet>}
+          {tri.rationale && <Facet label="⚖️ Triage">{tri.priority} · {tri.rationale}</Facet>}
+          {fix.root_cause && <Facet label="🔧 Fix (causa raíz)" good={!!fix.applied}>{fix.root_cause} → {fix.summary||""} {fix.asvs?("· ASVS "+fix.asvs):""} {fix.applied? <span className="ok">· aplicado al working tree</span> : "· sin aplicar"}</Facet>}
+          {ver.verdict && <Facet label="✅ Verificación" good={ver.verdict==="CLOSED"}>{ver.verdict}{ver.evidence?" · "+ver.evidence:""}</Facet>}
+        </div>
+        {chain.length>0 && (
+          <Facet label="🧨 Cadena de explotación (PoC conceptual)" wide={true}>
+            <ol className="killchain">
+              {chain.map((c,i)=><li key={i}><span className="kn">{i+1}</span><span className="kt">{c}</span></li>)}
+            </ol>
+          </Facet>
+        )}
+      </div>
     </td>
   );
 }
 
-function FindingsTable({findings}){
+function FindingsTable({findings,bucket}){
   const [open,setOpen] = useState({});
+  const [sel,setSel] = useState(()=>new Set());
+  const EMPTY = {encontrados:"Sin hallazgos abiertos en este momento.",mitigando:"Nada en mitigación todavía.",arreglados:"Aún no hay hallazgos resueltos.",filtrados:"Sin hallazgos filtrados."};
   const sorted = [...findings].sort((a,b)=>(PRIO_ORDER[(a.triage||{}).priority]??5)-(PRIO_ORDER[(b.triage||{}).priority]??5));
-  if(findings.length===0) return <div className="empty">Sin hallazgos en el ledger todavia. Corre <code>/vuln-hunter:hunt</code>.</div>;
+  if(findings.length===0) return <div className="empty">{EMPTY[bucket]||"Sin hallazgos."}</div>;
+  const toggleSel=(id,e)=>{ e.stopPropagation(); setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; }); };
+  const ids=[...sel];
   return (
-    <table>
-      <thead><tr><th>ID</th><th>Sev</th><th>Titulo</th><th>OWASP / CWE</th><th>Explotable</th><th>Estado</th></tr></thead>
-      <tbody>
-        {sorted.map(f=>{
-          const p = (f.triage||{}).priority || "—";
-          const intel = f.intel||{};
-          const isOpen = !!open[f.id];
-          return (
-            <Fragment key={f.id}>
-              <tr className="frow" onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
-                <td><code>{f.id}</code></td>
-                <td>{p!=="—" ? <span className="badge" style={{background:PRIO[p]||"#8a847a"}}>{p}</span> : "—"}</td>
-                <td>{f.title} {intel.in_cisa_kev && <span className="badge" style={{background:"#b4532f"}}>KEV</span>} {intel.known_ransomware_use && <span className="badge" style={{background:"#7a1f1f"}}>RANSOMWARE</span>}</td>
-                <td>{f.owasp_2025||f.owasp_2021||"—"}<br/><span style={{color:"var(--mute)",fontSize:12}}>{f.cwe||""}</span></td>
-                <td>{(f.exploitability||{}).verdict||"—"}</td>
-                <td><span className="pill">{STATUS_LABEL[f.status]||f.status||"—"}</span></td>
-              </tr>
-              {isOpen && <tr><FindingDetail f={f}/></tr>}
-            </Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+    <Fragment>
+      {ids.length>0 && (
+        <div className="seltool">
+          <span className="seln"><b>{ids.length}</b> seleccionado{ids.length>1?"s":""} · <code>{ids.join(" ")}</code></span>
+          <div className="selcmds">
+            <CmdChip label="Red-team" cmd={"/vuln-hunter:redteam "+ids.join(" ")}/>
+            <CmdChip label="Fix" cmd={"/vuln-hunter:fix "+ids.join(" ")} kind="primary"/>
+            <CmdChip label="Verify" cmd={"/vuln-hunter:verify "+ids.join(" ")}/>
+            <button className="selclear" onClick={()=>setSel(new Set())}>limpiar</button>
+          </div>
+        </div>
+      )}
+      <table>
+        <thead><tr><th className="csel"></th><th>ID</th><th>Sev</th><th>Titulo</th><th>OWASP / CWE</th><th>Explotable</th><th>Estado</th><th>Acción</th></tr></thead>
+        <tbody className="swap" key={bucket}>
+          {sorted.map(f=>{
+            const p = (f.triage||{}).priority || "—";
+            const intel = f.intel||{};
+            const isOpen = !!open[f.id];
+            const life = lifecycleOf(f.status);
+            const checked = sel.has(f.id);
+            return (
+              <Fragment key={f.id}>
+                <tr className={"frow "+life+(checked?" sel":"")} onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
+                  <td className="csel" onClick={(e)=>e.stopPropagation()}><input type="checkbox" checked={checked} onChange={()=>{}} onClick={(e)=>toggleSel(f.id,e)} aria-label={"seleccionar "+f.id}/></td>
+                  <td><code>{f.id}</code></td>
+                  <td>{p!=="—" ? <SevChip p={p}/> : "—"}</td>
+                  <td>{f.title} {intel.in_cisa_kev && <span className="tag" style={{background:"var(--amber)"}}>KEV</span>} {intel.known_ransomware_use && <span className="tag" style={{background:"var(--red)"}}>RANSOMWARE</span>}</td>
+                  <td>{f.owasp_2025||f.owasp_2021||"—"}<br/><span style={{color:"var(--ink-mute)",fontSize:12}}>{f.cwe||""}</span></td>
+                  <td>{(f.exploitability||{}).verdict||"—"}</td>
+                  <td><span className={"lbadge "+life}>{LIFE_LABEL[life]}</span></td>
+                  <td onClick={(e)=>e.stopPropagation()}><CopyBtn cmd={recCommand(f)}/></td>
+                </tr>
+                {isOpen && <tr><FindingDetail f={f}/></tr>}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </Fragment>
   );
 }
 
-function ActivityTimeline({activity}){
-  const evs = [...activity].reverse();
+// Hallazgos con pestanias por ciclo de vida. Un hallazgo se mueve de pestania
+// (Encontrados -> Mitigando -> Arreglados) conforme se arregla: ese es el cambio
+// de estado visible.
+function FindingsPanel({findings}){
+  const buckets = {encontrados:[],mitigando:[],arreglados:[],filtrados:[]};
+  findings.forEach(f=>{ buckets[lifecycleOf(f.status)].push(f); });
+  const tabs = [["encontrados","Encontrados"],["mitigando","Mitigando"],["arreglados","Arreglados"]];
+  if(buckets.filtrados.length) tabs.push(["filtrados","Filtrados"]);
+  const [tab,setTab] = useState("encontrados");
+  const active = buckets[tab] ? tab : "encontrados";
   return (
-    <div className="panelbox timeline">
-      <h2>Actividad</h2>
-      {evs.length===0 && <div className="empty">Sin eventos.</div>}
-      {evs.map((e,i)=>{
-        let txt;
-        if(e.type==="run:start") txt=`▶ Auditoria iniciada (${e.scope||"repo"})`;
-        else if(e.type==="run:done") txt="■ Auditoria finalizada";
-        else if(e.type==="stage:start") txt=`● Empieza ${e.stage}${e.agent?" ("+e.agent+")":""}`;
-        else if(e.type==="stage:end") txt=`✓ Termina ${e.stage}${e.summary?" — "+e.summary:""}`;
-        else if(e.type==="finding:new") txt=`＋ ${e.id} ${e.title||""}`;
-        else if(e.type==="deploy:blocked") txt=`⛔ Deploy bloqueado — ${e.reason||""}`;
-        else txt=e.type;
-        return <div className="ev" key={(e.ts||"")+e.type+(e.id||e.stage||"")+i}><span className="t">{(e.ts||"").replace("T"," ").slice(5,16)}</span><span>{txt}</span></div>;
-      })}
+    <div className="block">
+      <div className="eyebrow">Hallazgos</div>
+      <div className="tabs">
+        {tabs.map(([k,lbl])=>(
+          <button key={k} className={"tab "+(active===k?"on":"")} onClick={()=>setTab(k)}>
+            <span className={"tdot "+k}></span>{lbl}<span className="tcount">{buckets[k].length}</span>
+          </button>
+        ))}
+      </div>
+      <div className="surface tablecard"><FindingsTable findings={buckets[active]||[]} bucket={active}/></div>
     </div>
   );
 }
@@ -266,8 +685,8 @@ function App(){
 
   useEffect(()=>{ poll(); const id=setInterval(poll,2000); return ()=>clearInterval(id); },[poll]);
 
-  if(err && !ledger) return <div className="wrap"><h1>vuln-hunter</h1><div className="empty">No se pudo leer <code>ledger.json</code> ({err}). Corre <code>/vuln-hunter:detect</code> o <code>/vuln-hunter:hunt</code> primero.</div></div>;
-  if(!ledger) return <div className="wrap"><div className="empty">Cargando…</div></div>;
+  if(err && !ledger) return <div className="wrap"><div className="brand"><span className="slash">//</span>vuln-hunter</div><div className="surface empty">No se pudo leer <code>ledger.json</code> ({err}). Corre <code>/vuln-hunter:detect</code> o <code>/vuln-hunter:hunt</code> primero.</div></div>;
+  if(!ledger) return <div className="wrap"><div className="surface empty">Cargando…</div></div>;
 
   const run = ledger.run||{};
   const findings = ledger.findings||[];
@@ -276,25 +695,21 @@ function App(){
 
   return (
     <div className="wrap">
-      <h1>{runDone ? "" : <span className="live"></span>}vuln-hunter — Panel vivo</h1>
-      <div className="sub">scope: {run.scope||"repo completo"} · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {runDone?"finalizada":"en curso"} · actualizado {updated||"—"}</div>
+      <div className="brand">
+        {!runDone && <span className="bdot"></span>}vuln-hunter<span className="slash">//</span>panel vivo
+        {!runDone && <span className="liveword">live</span>}
+      </div>
+      <div className="sub">scope: <b>{run.scope||"repo completo"}</b> · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {runDone?"finalizada":"en curso"} · act {updated||"—"}</div>
 
-      {kev>0 && <div className="kev"><b>⚠ Atencion:</b> {kev} dependencia(s) de produccion con CVE en CISA KEV — el deploy queda bloqueado hasta parchear (vector tipico de ransomware, MITRE T1190).</div>}
+      {kev>0 && <div className="alert"><span className="aic">⚠</span><div className="atxt"><b>Atención:</b> {kev} dependencia(s) de producción con CVE en CISA KEV. El deploy queda bloqueado hasta parchear (vector típico de ransomware, MITRE T1190).</div></div>}
 
       <SummaryCards findings={findings}/>
-      <PipelineBar activity={activity} ledger={ledger}/>
-      <AgentRoster activity={activity} ledger={ledger}/>
+      <ActionsBar ledger={ledger} findings={findings}/>
+      <PipelineGraph activity={activity} ledger={ledger}/>
+      <Bitacora activity={activity} findings={findings}/>
+      <FindingsPanel findings={findings}/>
 
-      <div className="grid">
-        <div>
-          <div className="panelbox" style={{padding:0,overflow:"hidden"}}>
-            <FindingsTable findings={findings}/>
-          </div>
-        </div>
-        <ActivityTimeline activity={activity}/>
-      </div>
-
-      <footer>Datos: .vuln-hunter/ledger.json + activity.jsonl · panel estatico (React CDN) · polling 2s · vuln-hunter no sustituye auditoria humana.</footer>
+      <footer>Datos: <b>.vuln-hunter/ledger.json</b> + <b>activity.jsonl</b> · panel estático (React CDN) · polling 2s · vuln-hunter no sustituye auditoría humana.</footer>
     </div>
   );
 }

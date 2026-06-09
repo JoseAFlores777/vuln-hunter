@@ -36,11 +36,46 @@ class TestPanelReferences(unittest.TestCase):
         self.assertIn("babel", self.html)
 
     def test_renders_core_sections(self):
-        for token in ["AgentRoster", "PipelineBar", "FindingsTable", "ActivityTimeline"]:
+        for token in ["PipelineGraph", "Bitacora", "FindingsTable"]:
             self.assertIn(token, self.html)
+
+    def test_pipeline_graph_is_svg_with_spinner(self):
+        self.assertIn("<svg", self.html)
+        self.assertIn("spin", self.html)
+
+    def test_graph_shows_parallel_fork(self):
+        # RECON se bifurca a SAST e INTEL (corren en paralelo) y reconvergen
+        self.assertIn('["RECON","SAST"]', self.html)
+        self.assertIn('["RECON","INTEL"]', self.html)
 
     def test_polls_on_an_interval(self):
         self.assertIn("setInterval", self.html)
+
+    def test_has_lifecycle_tabs(self):
+        for t in ["Encontrados", "Mitigando", "Arreglados"]:
+            self.assertIn(t, self.html)
+
+    def test_no_horizontal_scrollbars(self):
+        # "evita los horizontal sliders": ningun overflow-x:auto en el panel
+        self.assertNotIn("overflow-x:auto", self.html)
+        self.assertNotIn("overflow-x: auto", self.html)
+
+    def test_pipeline_graph_is_responsive(self):
+        # el grafo escala al ancho del contenedor en vez de hacer scroll horizontal
+        self.assertIn("ResizeObserver", self.html)
+
+    def test_has_copyable_claude_commands(self):
+        self.assertIn("navigator.clipboard", self.html)
+        for c in ["/vuln-hunter:status", "/vuln-hunter:hunt", "/vuln-hunter:fix",
+                  "/vuln-hunter:redteam", "/vuln-hunter:verify"]:
+            self.assertIn(c, self.html)
+
+    def test_has_resume_and_nextstep_actions(self):
+        self.assertIn("Reanudar", self.html)
+        self.assertIn("Siguiente paso", self.html)
+
+    def test_supports_multi_issue_selection(self):
+        self.assertIn("seleccionado", self.html)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ---
 description: Confirma explotabilidad de un hallazgo (o de todos) con PoC conceptual (delega en redteam-whitehat)
-argument-hint: [VULN-NNN | all]
+argument-hint: [VULN-NNN ... | all]
 allowed-tools: Task, Read, Grep, Glob, Bash(python3:*)
 model: opus
 ---
@@ -13,7 +13,8 @@ Sin exploits ejecutables, sin malware, sin trafico de red. Lo imponen el agente
 y los hooks.
 
 ## Tarea
-Lanza el subagente **redteam-whitehat** sobre el hallazgo **$ARGUMENTS** (o `all`).
+Lanza el subagente **redteam-whitehat** sobre **$ARGUMENTS** (uno o varios
+VULN-ids separados por espacio, o `all`).
 Devuelve veredicto EXPLOTABLE / NO_EXPLOTABLE / CONDICIONAL con la cadena
 conceptual y la confianza ajustada.
 
