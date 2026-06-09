@@ -69,11 +69,39 @@ parchear. Úsalo así:
 /plugin marketplace add JoseAFlores777/vuln-hunter
 /plugin install vuln-hunter@vuln-hunter-marketplace
 ```
+El marketplace sigue la rama `main`, así que **instalas siempre la última versión**.
+
 **superpowers es OPCIONAL** (mejora el planning). Si lo quieres:
 ```bash
 /plugin marketplace add obra/superpowers-marketplace
 /plugin install superpowers@superpowers-marketplace
 ```
+
+### Actualizar a la última versión
+Claude Code no auto-actualiza en silencio; trae lo último de `main` cuando refrescas:
+```bash
+/plugin marketplace update vuln-hunter-marketplace
+/plugin update vuln-hunter
+```
+
+## Versionado y releases (mantenedor)
+La versión vive en un solo lugar lógico y se mantiene sincronizada en los tres
+campos que Claude Code lee (`plugin.json:version`, `marketplace.json:metadata.version`
+y `marketplace.json:plugins[].version`) con `scripts/bump-version.py`.
+
+El flujo es **por tag** — solo empujas un tag y GitHub Actions hace el resto:
+```bash
+scripts/release.sh 1.3.0        # = git tag v1.3.0 && git push origin v1.3.0
+```
+El workflow `Release` (`.github/workflows/release.yml`) entonces:
+1. Corre la suite de tests (gate).
+2. Sincroniza `1.3.0` en los manifests y commitea a `main` si había drift
+   (lo hace `github-actions[bot]`, no tu hook local).
+3. Publica el **GitHub Release** `v1.3.0` con notas autogeneradas.
+
+`scripts/release.sh` **no commitea en local** (solo empuja el tag), así que no
+choca con el hook `guard-commit`. Y `CI` (`.github/workflows/ci.yml`) valida en
+cada push/PR que los campos de versión no se desincronicen.
 
 ## Validar que NO es teatro de seguridad
 Incluye un laboratorio con **9 vulnerabilidades plantadas** y su ground truth en

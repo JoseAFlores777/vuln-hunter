@@ -1,0 +1,71 @@
+name: Release
+
+# Disparado al empujar un tag vX.Y.Z (ver scripts/release.sh).
+# Corre tests -> sincroniza la version del tag en los manifests -> publica Release.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validar el tag (semver vX.Y.Z)
+        id: ver
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag ${GITHUB_REF_NAME} no es semver vX.Y.Z"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Sincronizar version del tag en los manifests
+        id: sync
+        run: |
+          python3 scripts/bump-version.py "${{ steps.ver.outputs.version }}"
+          if [ -n "$(git status --porcelain .claude-plugin)" ]; then
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit de sincronizacion en main (si hubo drift)
+        if: steps.sync.outputs.changed == '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git commit -m "chore(release): v${{ steps.ver.outputs.version }} sync manifests [skip ci]"
+          git push origin HEAD:main
+
+      - name: Crear / actualizar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          fi
