@@ -21,6 +21,5 @@
     "red-team",
     "ransomware",
     "monorepo"
-  ],
-  "hooks": "./hooks/hooks.json"
+  ]
 }
