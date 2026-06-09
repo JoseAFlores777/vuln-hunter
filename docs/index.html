@@ -268,11 +268,23 @@ h1.hero-title .accent{
 .nodes{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .node2{
   display:flex;align-items:center;gap:11px;min-width:0;
-  padding:11px 14px;border-radius:11px;
+  padding:11px 14px;border-radius:11px;position:relative;cursor:help;outline:none;
   border:1px solid var(--line-2);background:rgba(255,255,255,.02);
   transition:border-color .2s,box-shadow .2s,transform .2s,background .2s;
 }
 .node2:hover{transform:translateY(-2px);border-color:var(--cyan);box-shadow:var(--glow-cyan);background:rgba(34,211,238,.04)}
+.node2:focus-visible{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+.node2:hover,.node2:focus-within{z-index:30}
+.node2 .ntip{
+  position:absolute;left:50%;top:calc(100% + 11px);transform:translateX(-50%) translateY(-4px);
+  width:250px;max-width:80vw;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;
+  padding:11px 13px;font-family:var(--sans);font-weight:400;font-size:12px;line-height:1.55;color:var(--ink-soft);
+  box-shadow:0 18px 44px -14px rgba(0,0,0,.85),var(--glow-cyan);
+  opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease-out,transform .16s ease-out;
+  z-index:40;text-align:left;white-space:normal;
+}
+.node2 .ntip::after{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:var(--line-2)}
+.node2:hover .ntip,.node2:focus-within .ntip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .node2 .nic{width:20px;height:20px;flex:0 0 auto;color:var(--cyan)}
 .node2 .nic svg{width:100%;height:100%}
 .node2 .ntext{display:flex;flex-direction:column;line-height:1.22;min-width:0}
@@ -500,9 +512,10 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <div class="lbody">
           <div class="lhead"><span class="ph-name" data-i18n="flow.ph.recon">Recon</span></div>
           <div class="nodes">
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l9-3 9 3-9 3-9-3z"/><path d="M3 6v6l9 3 9-3V6"/></svg></span>
               <span class="ntext"><span class="nt">recon</span><span class="ns" data-i18n="flow.s.recon">superficie</span></span>
+              <span class="ntip" data-i18n="flow.tip.recon">Mapea la superficie de ataque (entradas, sinks, trust boundaries) y modela amenazas. No busca vulnerabilidades concretas.</span>
             </div>
           </div>
         </div>
@@ -513,13 +526,15 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <div class="lbody">
           <div class="lhead"><span class="ph-name" data-i18n="flow.ph.analysis">Análisis</span><span class="par-tag">∥ <span data-i18n="flow.parallel">paralelo</span></span></div>
           <div class="nodes">
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg></span>
               <span class="ntext"><span class="nt">scan</span><span class="ns" data-i18n="flow.s.scan">SAST código</span></span>
+              <span class="ntip" data-i18n="flow.tip.scan">SAST de tu propio código (Semgrep, Bandit, ESLint-security, Roslyn) con taint/data-flow. No escanea dependencias.</span>
             </div>
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
               <span class="ntext"><span class="nt">watch</span><span class="ns">SCA deps</span></span>
+              <span class="ntip" data-i18n="flow.tip.watch">SCA de dependencias de producción: cruza con OSV/NVD/CISA KEV/EPSS. Único dueño del SCA; solo lee fuentes oficiales.</span>
             </div>
           </div>
         </div>
@@ -530,9 +545,10 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <div class="lbody">
           <div class="lhead"><span class="ph-name" data-i18n="flow.ph.offensive">Ofensiva</span></div>
           <div class="nodes">
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1 3-6z"/></svg></span>
               <span class="ntext"><span class="nt">red-team</span><span class="ns" data-i18n="flow.s.redteam">PoC concept.</span></span>
+              <span class="ntip" data-i18n="flow.tip.redteam">Confirma explotabilidad como atacante. Solo PoCs conceptuales; nada de malware ni exploits desplegables.</span>
             </div>
           </div>
         </div>
@@ -543,14 +559,16 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <div class="lbody">
           <div class="lhead"><span class="ph-name" data-i18n="flow.ph.decision">Decisión</span></div>
           <div class="nodes">
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 7l7-4 7 4M3 11h6l-3 5a3 3 0 0 1-3-5zm12 0h6l-3 5a3 3 0 0 1-3-5z"/></svg></span>
               <span class="ntext"><span class="nt">triage</span><span class="ns">CVSS+EPSS</span></span>
+              <span class="ntip" data-i18n="flow.tip.triage">Prioriza con CVSS + EPSS + CISA KEV, deduplica y filtra falsos positivos. KEV es override de prioridad.</span>
             </div>
             <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
               <span class="ntext"><span class="nt">plan</span><span class="ns" data-i18n="flow.s.plan">remediación</span></span>
+              <span class="ntip" data-i18n="flow.tip.plan">Genera el plan de remediación priorizado (Inmediato / Esta semana / Este mes).</span>
             </div>
           </div>
         </div>
@@ -561,19 +579,22 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <div class="lbody">
           <div class="lhead"><span class="ph-name" data-i18n="flow.ph.remediation">Remediación</span></div>
           <div class="nodes">
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7l-1.5-1.5a2 2 0 0 0-3 0L4 11a2 2 0 0 0 0 3l1.5 1.5M10 17l1.5 1.5a2 2 0 0 0 3 0L20 13a2 2 0 0 0 0-3L18.5 8.5M8 16l8-8"/></svg></span>
               <span class="ntext"><span class="nt">fix</span><span class="ns" data-i18n="flow.s.fix">causa raíz</span></span>
+              <span class="ntip" data-i18n="flow.tip.fix">Aplica el fix de causa raíz (ASVS) en una branch vuln-hunter/*. Nunca commitea sin aprobación humana.</span>
             </div>
             <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
               <span class="ntext"><span class="nt">patch</span><span class="ns" data-i18n="flow.s.patch">aprob. hash</span></span>
+              <span class="ntip" data-i18n="flow.tip.patch">Muestra el diff y exige aprobación humana por hash antes de commitear. Sin auto-merge.</span>
             </div>
             <span class="narw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg></span>
-            <div class="node2">
+            <div class="node2" tabindex="0">
               <span class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
               <span class="ntext"><span class="nt">verify</span><span class="ns" data-i18n="flow.s.verify">sin regresión</span></span>
+              <span class="ntip" data-i18n="flow.tip.verify">Re-escanea el código parcheado y corre los tests. Verificación honesta: declara PARCIAL si no hay cobertura.</span>
             </div>
           </div>
         </div>
@@ -889,6 +910,15 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "flow.ph.recon":"Recon","flow.ph.analysis":"Analysis","flow.parallel":"parallel","flow.ph.offensive":"Offensive",
     "flow.ph.decision":"Decision","flow.ph.decision2":"Decision","flow.ph.remediation":"Remediation","flow.ph.remediation2":"Remediation","flow.ph.remediation3":"Remediation",
     "flow.s.recon":"surface","flow.s.scan":"SAST code","flow.s.redteam":"concept. PoC","flow.s.plan":"remediation","flow.s.fix":"root cause","flow.s.patch":"hash approval","flow.s.verify":"no regression",
+    "flow.tip.recon":"Maps the attack surface (entrypoints, sinks, trust boundaries) and models threats. Does not hunt concrete vulns.",
+    "flow.tip.scan":"SAST of your own code (Semgrep, Bandit, ESLint-security, Roslyn) with taint/data-flow. Does not scan dependencies.",
+    "flow.tip.watch":"SCA of production dependencies: cross-checks OSV/NVD/CISA KEV/EPSS. Sole owner of SCA; reads official sources only.",
+    "flow.tip.redteam":"Confirms exploitability like an attacker. Conceptual PoCs only; no malware or deployable exploits.",
+    "flow.tip.triage":"Prioritizes with CVSS + EPSS + CISA KEV, dedupes and filters false positives. KEV overrides priority.",
+    "flow.tip.plan":"Generates the prioritized remediation plan (Now / This week / This month).",
+    "flow.tip.fix":"Applies the root-cause fix (ASVS) on a vuln-hunter/* branch. Never commits without human approval.",
+    "flow.tip.patch":"Shows the diff and requires human hash approval before committing. No auto-merge.",
+    "flow.tip.verify":"Re-scans the patched code and runs the tests. Honest verification: declares PARTIAL if there is no coverage.",
     "flow.lg.analysis":"Recon &amp; analysis","flow.lg.offensive":"Offensive (PoC)","flow.lg.decision":"Decision","flow.lg.remediation":"Remediation",
     "flow.note":"scan ∥ watch run in parallel · the rest is sequential",
     "ag.eyebrow":"The squad","ag.title":"7 agents, <em>7 real professionals</em>",
