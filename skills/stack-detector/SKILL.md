@@ -31,9 +31,9 @@ Multi-lenguaje (siempre, sobre la raiz): `semgrep:p/owasp-top-ten`, `trivy fs`,
 ```json
 {
   "packages": [
-    { "path": "apps/epos",    "stack": "django",  "scanners": ["bandit","semgrep:p/django","pip-audit","gitleaks"] },
-    { "path": "apps/portal",  "stack": "nextjs",  "scanners": ["eslint:security","semgrep:p/typescript","npm audit","gitleaks"] },
-    { "path": "services/scd", "stack": "dotnet",  "scanners": ["security-code-scan","semgrep:p/csharp","dotnet-vulnerable","gitleaks"] }
+    { "path": "apps/example-app", "stack": "django",  "scanners": ["bandit","semgrep:p/django","pip-audit","gitleaks"] },
+    { "path": "apps/example-web", "stack": "nextjs",  "scanners": ["eslint:security","semgrep:p/typescript","npm audit","gitleaks"] },
+    { "path": "services/example-api", "stack": "dotnet",  "scanners": ["security-code-scan","semgrep:p/csharp","dotnet-vulnerable","gitleaks"] }
   ],
   "root_scanners": ["semgrep:p/owasp-top-ten","trivy","gitleaks"]
 }

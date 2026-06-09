@@ -1,4 +1,4 @@
-{"ts": "2026-06-09T10:00:00", "type": "run:start", "scope": "apps/epos"}
+{"ts": "2026-06-09T10:00:00", "type": "run:start", "scope": "apps/example-app"}
 {"ts": "2026-06-09T10:00:05", "type": "stage:start", "stage": "RECON", "agent": "recon-cartographer"}
 {"ts": "2026-06-09T10:01:10", "type": "stage:end", "stage": "RECON", "agent": "recon-cartographer", "summary": "3 high-risk zones"}
 {"ts": "2026-06-09T10:01:12", "type": "stage:start", "stage": "SAST", "agent": "sast-analyst"}

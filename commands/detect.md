@@ -18,7 +18,7 @@ Usa el skill **stack-detector** para clasificar cada paquete/subproyecto del
 monorepo por stack y delimitar su subarbol (scoping por paquete). Escribe el
 resultado en `.vuln-hunter/stacks.json` con esta forma:
 ```json
-{ "packages": [ { "path": "apps/epos", "stack": "django", "scanners": ["bandit","semgrep:p/django","pip-audit","gitleaks"] } ] }
+{ "packages": [ { "path": "apps/example-app", "stack": "django", "scanners": ["bandit","semgrep:p/django","pip-audit","gitleaks"] } ] }
 ```
 Esto permite que /vuln-hunter:scan corra solo las herramientas correctas en cada
 subarbol y evita falsos positivos cross-paquete.

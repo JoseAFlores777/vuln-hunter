@@ -2,13 +2,13 @@
   "schema_version": "1.0",
   "run": {
     "started_at": "2026-06-09T10:00:00",
-    "scope": "apps/epos",
+    "scope": "apps/example-app",
     "owasp_version": "2025",
-    "branch": "vuln-hunter/audit-epos",
+    "branch": "vuln-hunter/audit-example-app",
     "stacks": ["python-django", "next-react-ts"]
   },
   "attack_surface": {
-    "entrypoints": ["apps/epos/views.py", "apps/epos/api/"],
+    "entrypoints": ["apps/example-app/views.py", "apps/example-app/api/"],
     "trust_boundaries": ["HTTP request -> ORM", "user input -> template"],
     "high_risk_zones": ["raw SQL in reports", "dangerouslySetInnerHTML in dashboard"]
   },
@@ -17,7 +17,7 @@
       "id": "VULN-101",
       "source": "sast",
       "title": "SQL injection (raw query)",
-      "location": "apps/epos/views.py:11",
+      "location": "apps/example-app/views.py:11",
       "cwe": "CWE-89",
       "owasp_2025": "A03:2025-Injection",
       "sast": {
@@ -47,7 +47,7 @@
       },
       "fix": {
         "root_cause": "String interpolation into raw SQL",
-        "files_touched": ["apps/epos/views.py"],
+        "files_touched": ["apps/example-app/views.py"],
         "asvs": "V5.3.4",
         "summary": "Use parameterized query with placeholder",
         "applied": true
@@ -65,7 +65,7 @@
       "id": "VULN-102",
       "source": "sast",
       "title": "XSS via dangerouslySetInnerHTML",
-      "location": "apps/epos/dashboard/page.jsx:4",
+      "location": "apps/example-app/dashboard/page.jsx:4",
       "cwe": "CWE-79",
       "owasp_2025": "A03:2025-Injection",
       "sast": {
@@ -95,7 +95,7 @@
       },
       "fix": {
         "root_cause": "Rendering untrusted HTML",
-        "files_touched": ["apps/epos/dashboard/page.jsx"],
+        "files_touched": ["apps/example-app/dashboard/page.jsx"],
         "asvs": "V5.3.3",
         "summary": "Render as text or sanitize with DOMPurify",
         "applied": true

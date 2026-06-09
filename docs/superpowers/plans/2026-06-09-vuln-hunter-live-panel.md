@@ -214,13 +214,13 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
   "schema_version": "1.0",
   "run": {
     "started_at": "2026-06-09T10:00:00",
-    "scope": "apps/epos",
+    "scope": "apps/example-app",
     "owasp_version": "2025",
-    "branch": "vuln-hunter/audit-epos",
+    "branch": "vuln-hunter/audit-example-app",
     "stacks": ["python-django", "next-react-ts"]
   },
   "attack_surface": {
-    "entrypoints": ["apps/epos/views.py", "apps/epos/api/"],
+    "entrypoints": ["apps/example-app/views.py", "apps/example-app/api/"],
     "trust_boundaries": ["HTTP request -> ORM", "user input -> template"],
     "high_risk_zones": ["raw SQL in reports", "dangerouslySetInnerHTML in dashboard"]
   },
@@ -229,7 +229,7 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
       "id": "VULN-101",
       "source": "sast",
       "title": "SQL injection (raw query)",
-      "location": "apps/epos/views.py:11",
+      "location": "apps/example-app/views.py:11",
       "cwe": "CWE-89",
       "owasp_2025": "A03:2025-Injection",
       "sast": {
@@ -259,7 +259,7 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
       },
       "fix": {
         "root_cause": "String interpolation into raw SQL",
-        "files_touched": ["apps/epos/views.py"],
+        "files_touched": ["apps/example-app/views.py"],
         "asvs": "V5.3.4",
         "summary": "Use parameterized query with placeholder",
         "applied": true
@@ -277,7 +277,7 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
       "id": "VULN-102",
       "source": "sast",
       "title": "XSS via dangerouslySetInnerHTML",
-      "location": "apps/epos/dashboard/page.jsx:4",
+      "location": "apps/example-app/dashboard/page.jsx:4",
       "cwe": "CWE-79",
       "owasp_2025": "A03:2025-Injection",
       "sast": {
@@ -307,7 +307,7 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
       },
       "fix": {
         "root_cause": "Rendering untrusted HTML",
-        "files_touched": ["apps/epos/dashboard/page.jsx"],
+        "files_touched": ["apps/example-app/dashboard/page.jsx"],
         "asvs": "V5.3.3",
         "summary": "Render as text or sanitize with DOMPurify",
         "applied": true
@@ -352,7 +352,7 @@ Create `tests/fixtures/ledger.sample.json` (a mid-audit state: one closed, one f
 Create `tests/fixtures/activity.sample.jsonl`:
 
 ```jsonl
-{"ts": "2026-06-09T10:00:00", "type": "run:start", "scope": "apps/epos"}
+{"ts": "2026-06-09T10:00:00", "type": "run:start", "scope": "apps/example-app"}
 {"ts": "2026-06-09T10:00:05", "type": "stage:start", "stage": "RECON", "agent": "recon-cartographer"}
 {"ts": "2026-06-09T10:01:10", "type": "stage:end", "stage": "RECON", "agent": "recon-cartographer", "summary": "3 high-risk zones"}
 {"ts": "2026-06-09T10:01:12", "type": "stage:start", "stage": "SAST", "agent": "sast-analyst"}
@@ -759,7 +759,7 @@ mkdir -p /tmp/vh-panel && cp panel/index.html /tmp/vh-panel/index.html \
   && sleep 1 && open http://localhost:8765/index.html
 ```
 Expected observations (manual):
-- Header shows scope `apps/epos`, branch `vuln-hunter/audit-epos`, "en curso", a pulsing live dot.
+- Header shows scope `apps/example-app`, branch `vuln-hunter/audit-example-app`, "en curso", a pulsing live dot.
 - KEV banner is visible (1 KEV dep).
 - Summary cards: 3 hallazgos, P0 ×2, P2 ×1, CISA KEV 1.
 - Pipeline: detect/RECON/SAST/INTEL/RED-TEAM/TRIAGE/plan = ✓ done, **FIX = ● running**, VERIFY = ○.
@@ -1101,7 +1101,7 @@ cp "$OLDPWD/tests/fixtures/ledger.sample.json" .vuln-hunter/ledger.json
 (python3 -m http.server 8766 --directory .vuln-hunter >/dev/null 2>&1 &)
 sleep 1 && open http://localhost:8766/index.html
 # Now append events with the real helper and watch the panel update within ~2s:
-VULN_ACTIVITY=.vuln-hunter/activity.jsonl python3 "$OLDPWD/scripts/activity.py" run:start scope="apps/epos"
+VULN_ACTIVITY=.vuln-hunter/activity.jsonl python3 "$OLDPWD/scripts/activity.py" run:start scope="apps/example-app"
 VULN_ACTIVITY=.vuln-hunter/activity.jsonl python3 "$OLDPWD/scripts/activity.py" stage:start stage=FIX agent=appsec-fixer
 ```
 Expected: panel loads from the real `activity.py` output; after the second command, within ~2s the FIX step turns ● running and `appsec-fixer` shows running, and the timeline gains the two events — **without reloading the page**.

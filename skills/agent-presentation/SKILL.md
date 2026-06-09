@@ -30,7 +30,7 @@ Iconos y etiquetas por agente (usalos EXACTOS):
 ## 2. Bloque "Resumen" (3 lineas maximo)
 ```
 Resumen     3 hallazgos nuevos · 1 critico (P0) · 0 falsos positivos descartados
-Scope       apps/epos (Django)
+Scope       apps/example-app (Django)
 Ledger      .vuln-hunter/ledger.json  (+3 findings)
 ```
 
