@@ -90,19 +90,29 @@ La versión vive en un solo lugar lógico y se mantiene sincronizada en los tres
 campos que Claude Code lee (`plugin.json:version`, `marketplace.json:metadata.version`
 y `marketplace.json:plugins[].version`) con `scripts/bump-version.py`.
 
-El flujo es **por tag** — solo empujas un tag y GitHub Actions hace el resto:
-```bash
-scripts/release.sh 1.3.0        # = git tag v1.3.0 && git push origin v1.3.0
-```
-El workflow `Release` (`.github/workflows/release.yml`) entonces:
-1. Corre la suite de tests (gate).
-2. Sincroniza `1.3.0` en los manifests y commitea a `main` si había drift
-   (lo hace `github-actions[bot]`, no tu hook local).
-3. Publica el **GitHub Release** `v1.3.0` con notas autogeneradas.
+**Releasea SIEMPRE con `scripts/release.sh` — NO tagues a mano.** El CI ya no
+escribe en `main`: el tag debe traer los manifests ya en la versión correcta, así
+que un `git tag` manual (sin sincronizar) **falla el release**.
 
-`scripts/release.sh` **no commitea en local** (solo empuja el tag), así que no
-choca con el hook `guard-commit`. Y `CI` (`.github/workflows/ci.yml`) valida en
-cada push/PR que los campos de versión no se desincronicen.
+```bash
+scripts/release.sh 2.1.0
+```
+El script (lo corres tú en tu terminal): sincroniza `2.1.0` en los manifests,
+**commitea** ese sync a `main`, hace **push de main** y crea+empuja el tag `v2.1.0`
+sobre ese commit. Así el tag = lo testeado = lo publicado.
+
+El workflow `Release` (`.github/workflows/release.yml`) entonces, **sin tocar main**:
+1. Hace checkout del **tag**, valida que sea ancestro de `main` (provenance).
+2. Comprueba que los manifests del tag estén en la versión del tag
+   (`bump-version.py --check`); si tagueaste a mano, aquí **falla** y te dice que uses
+   `release.sh`.
+3. Corre la suite de tests sobre el árbol del tag.
+4. Publica el **GitHub Release** con notas autogeneradas.
+
+Si te equivocaste y empujaste un tag a mano: bórralo
+(`git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`) y vuelve a usar
+`scripts/release.sh X.Y.Z`. `CI` (`.github/workflows/ci.yml`) valida en cada push/PR
+que los tres campos de versión no se desincronicen.
 
 ## Validar que NO es teatro de seguridad
 Incluye un laboratorio con **9 vulnerabilidades plantadas** y su ground truth en
