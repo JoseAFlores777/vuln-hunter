@@ -116,16 +116,26 @@ control negativo que NO debe marcarse). Ese número te dice si el plugin sirve.
 
 ## Aprobar un patch (gesto humano)
 ```bash
-git diff HEAD                                   # revisa
-python3 scripts/approve-diff.py                 # aprueba ESE diff (por hash)
-# si editas más, la aprobación caduca: re-aprueba
+git add <archivos del fix>                       # stagea EXACTO lo revisado
+git diff --cached HEAD                            # revisa el indice staged
+python3 scripts/approve-diff.py                   # aprueba ESE indice (por hash)
+# si re-stageas/editas, la aprobación caduca: re-aprueba
 ```
 
-## Salvaguardas (hooks, todas probadas)
-- `block-exploit-write.py` — bloquea contenido de exploit ejecutable; advierte
-  (no bloquea) ante nombres meramente sospechosos.
-- `guard-commit-and-exec.py` — aprobación por hash del diff + gate de deploy
-  (KEV) + bloqueo de ejecución ofensiva.
+## Salvaguardas (hooks) — defensa en profundidad, NO garantías
+**Honestidad ante todo:** la barrera PRIMARIA es la **revisión humana del diff** y
+el **allowlist `tools:`** de cada agente. Los hooks son **defensa en profundidad**
+y, al inspeccionar cadenas de comandos shell, son **best-effort y evadibles** (un
+comando suficientemente ofuscado puede esquivarlos; además un hook PreToolUse solo
+ve lo que ejecuta Claude, no algo lanzado fuera del plugin). No los trates como
+una garantía absoluta.
+- `guard-commit-and-exec.py` — ata la aprobación al **índice staged** (`git diff
+  --cached HEAD`); cierra los wrappers obvios (`bash -c`, `eval`, `git -C/-c`,
+  `commit -a`), pero su detección de commits es un denylist conservador.
+- `block-exploit-write.py` — bloquea contenido de exploit ejecutable; advierte ante
+  nombres sospechosos. Fail-closed ante entrada ilegible.
+- `guard-webfetch.py` — acota WebFetch del `threat-intel-scout` a fuentes oficiales
+  (https + allowlist de hosts); no afecta el WebFetch del resto de la sesión.
 
 ## Estructura
 ```

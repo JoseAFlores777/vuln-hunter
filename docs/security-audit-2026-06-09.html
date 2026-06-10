@@ -82,7 +82,8 @@
       <li><a href="#bajo">Bajo / informativo</a></li>
       <li><a href="#descartados">Descartados (falsos positivos)</a></li>
       <li><a href="#verificacion">Verificación</a></li>
-      <li><a href="#residuales">Residuales recomendados</a></li>
+      <li><a href="#residuales">Residuales (resueltos)</a></li>
+      <li><a href="#limitaciones">Limitaciones — lo que NO garantiza</a></li>
     </ol>
   </nav>
 
@@ -218,9 +219,23 @@
     <p style="color:var(--ink-mute);font-size:15px">Estado final: 44 archivos (35 modificados, 9 nuevos) · <b style="color:var(--low)">84 tests en verde</b>.</p>
   </section>
 
+  <section id="limitaciones">
+    <h2 class="sec"><span class="num">§ 09</span>Limitaciones — lo que NO garantiza</h2>
+    <p class="section-lede">Una segunda revisión adversarial de equipo encontró que el primer pase sobrevendió. Honestidad:</p>
+    <div class="callout">
+      <p style="margin:0 0 10px"><b>Los hooks son defensa en profundidad EVADIBLE, no garantías.</b> La revisión verificó que la primera versión del gate de aprobación se <b>evadía con <code>bash -c "git commit"</code></b> — una <b>regresión</b> que se introdujo y luego se corrigió (escaneo RAW + test de integración). La barrera primaria es la <b>revisión humana del diff</b> + el allowlist <code>tools:</code>; el hook es secundario y ofuscable.</p>
+      <p style="margin:0">El <b>deploy-gate confía en el <code>status</code> del ledger</b> (escrito por agentes LLM sobre contenido potencialmente hostil): mitigado por la frontera anti prompt-injection, no eliminado.</p>
+    </div>
+    <ul>
+      <li><b>Regresiones corregidas tras la revisión:</b> eslint con <code>npx --no-install</code> reportaba un falso "terminó con hallazgos" (ahora SKIP honesto); <code>git commit -S</code> firmado se bloqueaba por error; <code>DEPLOY_RE</code> bloqueaba el propio commit de release. Las tres arregladas con tests.</li>
+      <li><b>Sobre-ingeniería para un tool de un usuario en localhost:</b> anti-DNS-rebinding en loopback, SHA-pin de actions first-party, y un pre-compilado del panel que no quita la dependencia de CDN. Se mantiene por disciplina, no por necesidad real.</li>
+    </ul>
+    <p style="color:var(--ink-mute);font-size:15px">Tras la segunda ronda: <b style="color:var(--low)">95 tests en verde</b>. Una auditoría con tests verdes no prueba ausencia de fallos — la segunda revisión halló una regresión propia.</p>
+  </section>
+
   <footer>
-    vuln-hunter · auditoría defensiva y autorizada del propio kit · v1.0 — 2026-06-09 ·
-    no reemplaza una revisión humana independiente.
+    vuln-hunter · auditoría defensiva y autorizada del propio kit · v1.1 — 2026-06-09 ·
+    una auditoría con tests verdes no prueba ausencia de fallos; no reemplaza revisión humana continua.
   </footer>
 </div>
 </body>

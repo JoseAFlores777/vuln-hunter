@@ -46,11 +46,14 @@ advisories de vendors. Nunca busca ni ejecuta exploits/PoCs. El hook
 `guard-webfetch.py` fuerza este allowlist de hosts sobre las llamadas WebFetch de
 ESTE agente (las del resto de la sesión no se tocan).
 
-## 6. Aprobación humana del patcher (por hash del diff)
+## 6. Aprobación humana del patcher (por hash del índice staged)
 `appsec-fixer` aplica cambios en branch `vuln-hunter/*` pero NO commitea. El
-commit solo procede tras aprobación humana del diff EXACTO: la persona corre
-`scripts/approve-diff.py`, que guarda el hash del diff; si el código cambia tras
-aprobar, el hook vuelve a bloquear. Nunca hay auto-merge.
+commit solo procede tras aprobación humana del **índice staged** EXACTO: la persona
+stagea (`git add`) lo revisado y corre `scripts/approve-diff.py`, que guarda el hash
+de `git diff --cached HEAD`; si el índice cambia tras aprobar, el hook vuelve a
+bloquear. Nunca hay auto-merge. Honestidad: la barrera PRIMARIA es esa revisión
+humana; el hook `guard-commit-and-exec.py` es defensa en profundidad y, como
+denylist de comandos shell, es best-effort/evadible (no es una garantía absoluta).
 
 ## 7. Gate de despliegue
 Si una dependencia de producción tiene un CVE en CISA KEV (o EPSS alto),

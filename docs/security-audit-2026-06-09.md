@@ -112,5 +112,35 @@ Los 4 residuales se implementaron tras el primer pase:
 
 **Estado final:** 44 archivos tocados (35 modificados, 9 nuevos) · **84 tests en verde**.
 
+## Limitaciones — lo que el kit NO garantiza (segunda revisión de equipo)
+
+Un segundo pase adversarial (4 lentes: seguridad, mantenibilidad, pragmatismo,
+regresiones) encontró que el primer pase **sobrevendió**. Honestidad:
+
+- **Los hooks son defensa en profundidad EVADIBLE, no garantías.** El gate de
+  commit/exec/deploy es un denylist de comandos shell. La revisión encontró —y se
+  verificó— que la primera versión del gate de aprobación se **evadía con
+  `bash -c "git commit"` / `eval` / `$(echo git) commit`** (una **regresión**: el
+  regex viejo sí los atrapaba). **Corregido** con un escaneo RAW de respaldo +
+  rechazo de re-stage/redirect encapsulado, con test de integración. Pero la lección
+  se mantiene: la barrera PRIMARIA es la **revisión humana del diff** y el allowlist
+  `tools:`; el hook es secundario y un atacante decidido puede ofuscar.
+- **El deploy-gate confía en el `status` del ledger**, que escriben agentes LLM
+  sobre contenido potencialmente hostil. Un `status: filtered` inyectado a un KEV lo
+  saca del gate. Mitigado por la frontera anti prompt-injection (CLAUDE.md §4-bis),
+  no eliminado.
+- **Regresiones de corrección corregidas tras la revisión:** eslint con
+  `npx --no-install` reportaba un falso "terminó con hallazgos" (ahora SKIP honesto);
+  `git commit -S` (firmado) se bloqueaba por error; `DEPLOY_RE` bloqueaba el propio
+  commit de release. Las tres arregladas, con tests.
+- **Sobre-ingeniería para un tool de un usuario en localhost:** parte del hardening
+  (anti-DNS-rebinding en loopback, SHA-pin de actions first-party, pre-compilado del
+  panel que no quita la dependencia de CDN) está calibrado por encima de la amenaza
+  real. Se mantiene por disciplina, no por necesidad.
+
+Total tras la segunda ronda: **95 tests en verde**.
+
 ---
-_Auditoría defensiva y autorizada del propio kit. No reemplaza una revisión humana independiente._
+_Auditoría defensiva y autorizada del propio kit. Una auditoría con tests verdes no
+prueba ausencia de fallos: la segunda revisión halló una regresión propia. No
+reemplaza una revisión humana independiente y continua._
