@@ -26,10 +26,20 @@ lockfiles de produccion si esta vacio). El agente:
    skill ledger-contract.
 
 ## Modo gate (`--gate`)
-Si se pasa `--gate`, ademas de reportar, devuelve un veredicto claro
-**APTO_PARA_DESPLIEGUE** o **DESPLIEGUE_BLOQUEADO** (con la lista de CVEs en KEV o
-EPSS alto que lo bloquean). Este veredicto es el que consume el hook de gate
-pre-deploy (`deploy-gate.py`) para impedir un release inseguro.
+Si se pasa `--gate`, ademas de reportar, MATERIALIZA el gate de despliegue de
+forma DETERMINISTA a partir del ledger (no a mano): corre
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deploy-gate.py .vuln-hunter/ledger.json
+```
+
+Ese script DERIVA `.vuln-hunter/deploy-blocked` del ledger: lo escribe (con los
+VULN-ids bloqueantes) si hay alguna dependencia de PRODUCCION abierta con CVE en
+CISA KEV o EPSS alto, y lo elimina si no hay ninguna. Devuelve **APTO_PARA_DESPLIEGUE**
+o **DESPLIEGUE_BLOQUEADO**. El hook `guard-commit-and-exec.py` solo LEE ese archivo,
+asi que la decision queda atada al ledger y no a que el LLM lo escriba a mano.
+NO crees ni borres `.vuln-hunter/deploy-blocked` manualmente: deja que el script
+lo derive.
 
 ## Presentacion
 El agente presenta su resultado con el skill `agent-presentation` (cabecera con
