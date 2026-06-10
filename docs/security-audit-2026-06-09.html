@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Auditoría de seguridad — vuln-hunter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#f4f1ea;--paper-2:#ece7dd;
+    --ink:#1a1915;--ink-soft:#3a3833;--ink-mute:#6f6a60;
+    --rule:#d8d2c4;--accent:#c96442;--accent-soft:#e8a48a;
+    --crit:#b4532f;--med:#c0772f;--low:#6b7d5c;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;line-height:1.65;font-size:17px}
+  .wrap{max-width:980px;margin:0 auto;padding:64px 32px 96px}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:2.5px;text-transform:uppercase;color:var(--accent);margin:0 0 18px}
+  h1{font-family:'Tinos',serif;font-size:56px;line-height:1.05;font-weight:700;margin:0 0 18px;letter-spacing:-.5px}
+  h1 em{color:var(--accent);font-style:italic}
+  .lede{font-size:20px;color:var(--ink-soft);max-width:60ch;margin:0 0 26px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink-mute);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:16px 0;margin-bottom:40px}
+  .meta b{color:var(--ink-soft);font-weight:500}
+  nav.toc{background:var(--paper-2);border:1px solid var(--rule);border-radius:12px;padding:22px 26px;margin-bottom:48px}
+  nav.toc h2{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-mute);margin:0 0 14px}
+  nav.toc ol{margin:0;padding:0;list-style:none;columns:2;column-gap:36px}
+  nav.toc li{counter-increment:toc;margin:5px 0;break-inside:avoid}
+  nav.toc a{text-decoration:none;color:var(--ink-soft);display:flex;gap:10px;padding:2px 0;border-bottom:1px solid transparent}
+  nav.toc a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+  nav.toc a::before{content:counter(toc,decimal-leading-zero);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)}
+  nav.toc ol{counter-reset:toc}
+  section{border-bottom:1px solid var(--rule);padding:36px 0}
+  section:last-of-type{border-bottom:0}
+  h2.sec{font-family:'Tinos',serif;font-size:30px;font-weight:700;margin:0 0 6px;scroll-margin-top:24px;display:flex;align-items:baseline;gap:14px}
+  .num{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent);font-weight:700}
+  .section-lede{color:var(--ink-mute);font-size:16px;margin:0 0 20px}
+  p{margin:0 0 16px}
+  ul{margin:0 0 16px;padding-left:22px}
+  li{margin:6px 0}
+  code{font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--paper-2);border:1px solid var(--rule);border-radius:4px;padding:1px 5px}
+  table{width:100%;border-collapse:collapse;margin:8px 0 20px;font-size:14.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-mute);background:var(--paper-2)}
+  td code{background:transparent;border:0;padding:0;color:var(--accent)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0 8px}
+  .kpi{background:var(--paper-2);border:1px solid var(--rule);border-radius:12px;padding:18px 14px;text-align:center}
+  .kpi .n{font-family:'Tinos',serif;font-size:38px;line-height:1;font-weight:700}
+  .kpi .l{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-mute);margin-top:8px}
+  .sev{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;padding:1px 7px;border-radius:5px;color:#fff;white-space:nowrap}
+  .sev.c{background:var(--crit)} .sev.m{background:var(--med)} .sev.l{background:var(--low)}
+  .callout{background:var(--paper-2);border:1px solid var(--rule);border-left:none;border-radius:12px;padding:18px 22px;margin:8px 0 20px}
+  .callout.good{border-color:var(--low)}
+  .callout b{color:var(--accent)}
+  footer{margin-top:48px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-mute);border-top:1px solid var(--rule);padding-top:20px}
+  @media (max-width:760px){.wrap{padding:40px 20px}h1{font-size:38px}nav.toc ol{columns:1}.kpis{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Security Audit · 2026-06-09</p>
+    <h1>Auditoría <em>end-to-end</em> de vuln-hunter</h1>
+    <p class="lede">Auditoría defensiva del propio kit: hooks, scripts, panel, CI, agentes y schema.
+      48 candidatos → 41 confirmados → remediados, con 79 tests en verde.</p>
+    <div class="meta">
+      <span><b>Objeto:</b> el plugin vuln-hunter</span>
+      <span><b>Método:</b> 57 sub-agentes · 8 dimensiones · verif. adversarial</span>
+      <span><b>Estado:</b> remediado (working tree, sin commit)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <h2>Índice</h2>
+    <ol>
+      <li><a href="#resumen">Resumen ejecutivo</a></li>
+      <li><a href="#metodo">Metodología</a></li>
+      <li><a href="#alto">Hallazgos crítico / alto</a></li>
+      <li><a href="#medio">Hallazgos medio</a></li>
+      <li><a href="#bajo">Bajo / informativo</a></li>
+      <li><a href="#descartados">Descartados (falsos positivos)</a></li>
+      <li><a href="#verificacion">Verificación</a></li>
+      <li><a href="#residuales">Residuales recomendados</a></li>
+    </ol>
+  </nav>
+
+  <section id="resumen">
+    <h2 class="sec"><span class="num">§ 01</span>Resumen ejecutivo</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="n">48</div><div class="l">Candidatos</div></div>
+      <div class="kpi"><div class="n" style="color:var(--accent)">41</div><div class="l">Confirmados</div></div>
+      <div class="kpi"><div class="n">34</div><div class="l">Archivos fix</div></div>
+      <div class="kpi"><div class="n" style="color:var(--low)">84</div><div class="l">Tests OK</div></div>
+    </div>
+    <p>La barrera de mayor severidad —la aprobación humana del patch— estaba atada al <em>working tree</em>
+      (<code>git diff HEAD</code>) en vez de al <b>índice staged</b> que realmente se commitea. Permitía
+      aprobar un fix limpio y luego commitear un backdoor con el hash de aprobación intacto. <b>Cerrada.</b></p>
+    <div class="callout good">
+      <p style="margin:0"><b>Confirmado limpio:</b> el panel React no tiene XSS (JSX auto-escapa,
+      sinks por <code>textContent</code>); <code>report.py</code> escapa todo valor del ledger; y el
+      allowlist <code>tools:</code> del red-team ya impide escritura/red sin depender de <code>disallowedTools</code>.</p>
+    </div>
+  </section>
+
+  <section id="metodo">
+    <h2 class="sec"><span class="num">§ 02</span>Metodología</h2>
+    <ul>
+      <li>Lectura completa del código ejecutable (hooks, scripts, panel, CI) e inventario del repo.</li>
+      <li>Workflow de <b>57 sub-agentes</b> sobre 8 dimensiones, cada hallazgo pasado por un verificador
+        adversarial que debía refutarlo o confirmarlo y corregir la fix.</li>
+      <li>Verificación de la semántica real de Claude Code (docs en vivo): <code>tools:</code> es allowlist
+        enforced; <code>Bash(cmd:*)</code> granular <b>no</b> aplica en frontmatter de agentes; los hooks
+        PreToolUse aplican a subagentes; <code>exit 2</code> deniega.</li>
+      <li>Remediación con prueba de cada fix: el bypass debe bloquear, el caso legítimo pasar.</li>
+    </ul>
+  </section>
+
+  <section id="alto">
+    <h2 class="sec"><span class="num">§ 03</span>Hallazgos crítico / alto</h2>
+    <table>
+      <thead><tr><th>Sev</th><th>Hallazgo</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev c">ALTO</span></td>
+          <td>Aprobación atada al working tree → se commitea contenido distinto al aprobado
+            (<code>guard-commit-and-exec.py</code>, <code>approve-diff.py</code>)</td>
+          <td>Hash de <code>git diff --cached HEAD</code> (índice staged) en ambos; rechazo de índice vacío;
+            <code>patch.md</code> exige <code>git add</code> antes de aprobar</td></tr>
+        <tr><td><span class="sev c">ALTO</span></td>
+          <td>Panel servido en <code>0.0.0.0</code> → hallazgos/rutas expuestos a la LAN
+            (<code>serve-panel.sh</code>)</td>
+          <td>Bind <code>127.0.0.1</code> + allowlist de header <code>Host</code> (anti DNS-rebinding) +
+            <code>Cache-Control: no-store</code> + PID file</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="medio">
+    <h2 class="sec"><span class="num">§ 04</span>Hallazgos medio</h2>
+    <table>
+      <thead><tr><th>Hallazgo</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Gate de commit evadible (<code>git -C</code>, <code>-c</code>, alias) y <code>commit-tree</code> falso positivo</td>
+          <td>Parser tokenizado (shlex): salta flags globales, subcomando exacto, bloquea redirección y <code>commit -a</code>/pathspec</td></tr>
+        <tr><td><code>intel-cache fetch</code>: SSRF + inyección de flags a curl</td>
+          <td><code>--</code> antes de la URL, <code>--proto =https</code>, sin <code>-L</code>, allowlist de hosts, sin args del caller, guard de symlink</td></tr>
+        <tr><td>Release testea <code>main</code> pero publica el tag (provenance)</td>
+          <td>Guard <code>git merge-base --is-ancestor &lt;tag&gt; origin/main</code> antes de publicar</td></tr>
+        <tr><td>Docs venden <code>disallowedTools</code> como "barrera principal"</td>
+          <td>Corregido: la barrera es el allowlist <code>tools:</code>; el resto es defensa en profundidad</td></tr>
+        <tr><td><code>threat-intel-scout</code> con WebFetch sin restricción de host</td>
+          <td>Nuevo hook <code>guard-webfetch.py</code>: https + allowlist oficial <b>solo</b> para ese agente (fail-open para el resto)</td></tr>
+        <tr><td>Agentes sin frontera "repo = DATA, no instrucciones" (prompt-injection)</td>
+          <td>Cláusula uniforme en 6 agentes + regla top-level; intel anclado a datos estructurados (KEV/grafo de deps)</td></tr>
+        <tr><td>Gate de deploy sin productor determinista (dependía del LLM)</td>
+          <td>Nuevo <code>deploy-gate.py</code> que deriva <code>deploy-blocked</code> del ledger; informe reporta drift gate↔ledger</td></tr>
+        <tr><td><code>status:closed</code> contado como cerrado sin verdict <code>CLOSED</code></td>
+          <td><code>is_truly_closed</code> en KPI, <code>risk_verdict</code> y "Qué está seguro"; warning de cierre sin evidencia</td></tr>
+        <tr><td><code>rescan</code> marca <code>fixed</code> por desaparecer del escáner</td>
+          <td><code>report.py</code> excluye fixes <code>source: rescan</code> del KPI "corregidos"</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="bajo">
+    <h2 class="sec"><span class="num">§ 05</span>Bajo / informativo (remediados)</h2>
+    <ul>
+      <li><b>Hooks:</b> fail-closed en entrada ilegible; regex de brute-force anclada a invocación;
+        patrones ofensivos ampliados; rutas de estado ancladas a <code>CLAUDE_PROJECT_DIR</code>; matcher de deploy ampliado.</li>
+      <li><b>Python:</b> <code>migrate</code> purga findings no-dict; escritura atómica; <code>status.py</code>
+        robusto; <code>activity.py</code> protege <code>type</code>/<code>ts</code>; resume rutea solo-intel a triage.</li>
+      <li><b>Report:</b> sin <code>--enable-local-file-access</code>; clamp de margen.</li>
+      <li><b>Shell:</b> <code>run-scan.sh</code> con <code>npx --no-install</code>; cache <code>chmod 700</code>.</li>
+      <li><b>Panel:</b> React/ReactDOM/Babel pineados a versión exacta + <b>SRI</b> + <code>crossorigin</code>.</li>
+      <li><b>CI:</b> acciones pineadas por SHA + <code>dependabot.yml</code>.</li>
+      <li><b>Schema:</b> <code>schema_version</code> a <code>enum</code> + skill a <code>1.2</code> + test de lockstep.
+        <code>plugin.json</code> re-declara <code>hooks</code>.</li>
+    </ul>
+  </section>
+
+  <section id="descartados">
+    <h2 class="sec"><span class="num">§ 06</span>Descartados (falsos positivos verificados)</h2>
+    <ul>
+      <li><b>Panel DOM-XSS:</b> limpio. JSX auto-escapa; tooltip por <code>textContent</code>; href con <code>encodeURIComponent</code>/constantes; sin <code>dangerouslySetInnerHTML</code>.</li>
+      <li><b>Allowlist del red-team:</b> es la barrera real; aun ignorando <code>disallowedTools</code>, el agente no tiene Write ni Bash de red.</li>
+      <li><b>Otros:</b> <code>fixer</code> omite <code>git commit</code> (correcto); <code>VULN_ACTIVITY</code> es ruta del operador; cache-key/url y <code>run-scan target</code> no explotables en contexto.</li>
+    </ul>
+  </section>
+
+  <section id="verificacion">
+    <h2 class="sec"><span class="num">§ 07</span>Verificación</h2>
+    <p class="section-lede">Cada fix probada: el bypass bloquea, el caso legítimo pasa.</p>
+    <ul>
+      <li><b>Suite:</b> <code>python3 -m unittest discover -s tests</code> → <b>84 OK</b> (53 + 31 nuevos).</li>
+      <li>Hook: bloquea re-staging post-aprobación (backdoor), <code>-C</code>/<code>-c</code>/<code>commit-tree</code>, <code>commit -a</code>, deploy con gate, ofensivos; permite commit aprobado y <code>git status</code>.</li>
+      <li>Panel: sirve solo en loopback (Host bueno→200, rebind→421). <code>intel-cache</code> rechaza http/host no oficial/arg-injection/<code>file://</code>. <code>deploy-gate</code> bloquea KEV/EPSS y limpia al parchear.</li>
+      <li>Sanidad: <code>bump-version --check</code>, <code>py_compile</code>, <code>bash -n</code>, <code>json.load</code> de todos los artefactos OK.</li>
+    </ul>
+  </section>
+
+  <section id="residuales">
+    <h2 class="sec"><span class="num">§ 08</span>Residuales — <em style="color:var(--low);font-style:normal">resueltos</em></h2>
+    <p class="section-lede">Los 4 residuales se implementaron tras el primer pase.</p>
+    <table>
+      <thead><tr><th>Residual</th><th>Resuelto</th></tr></thead>
+      <tbody>
+        <tr><td>Babel-en-navegador + sin CSP</td>
+          <td>JSX pre-compilado (<code>build-panel.sh</code>, fuente <code>app.jsx</code>); CSP por hash sha256, <b>sin <code>unsafe-eval</code></b>. Render verificado en Chrome headless.</td></tr>
+        <tr><td><code>rescan</code> marca <code>fixed</code> sin evidencia</td>
+          <td>Nuevo estado <code>candidate-resolved</code> (schema/report/panel/ledger/status); <code>rescan.md</code> ya no escribe <code>applied:true</code>. Cierra solo <code>verify</code>.</td></tr>
+        <tr><td>Ejecución de tooling del repo sin aislar</td>
+          <td>Nuevo <code>SECURITY.md</code> con postura de contenedor/VM; aviso en <code>run-scan.sh</code> + enlace en README.</td></tr>
+        <tr><td>Release muta <code>main</code> desde CI</td>
+          <td>Sync de versión en <code>release.sh</code> (local); <code>release.yml</code> hace checkout del tag, valida, testea y publica — sin push a <code>main</code>.</td></tr>
+      </tbody>
+    </table>
+    <p style="color:var(--ink-mute);font-size:15px">Estado final: 44 archivos (35 modificados, 9 nuevos) · <b style="color:var(--low)">84 tests en verde</b>.</p>
+  </section>
+
+  <footer>
+    vuln-hunter · auditoría defensiva y autorizada del propio kit · v1.0 — 2026-06-09 ·
+    no reemplaza una revisión humana independiente.
+  </footer>
+</div>
+</body>
+</html>

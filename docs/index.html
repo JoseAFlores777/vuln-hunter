@@ -783,7 +783,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <div class="adv c4 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H4v5M15 3h5v5M9 21H4v-5M15 21h5v-5M9 9h6v6H9z"/></svg></div>
       <h3 data-i18n="adv.4.h">Barrera del red-team</h3>
-      <p data-i18n="adv.4.p">Solo PoCs conceptuales. <code>disallowedTools</code> + <code>block-exploit-write.py</code> bloquean malware, shellcode y exploits desplegables.</p>
+      <p data-i18n="adv.4.p">Solo PoCs conceptuales. El allowlist <code>tools:</code> (sin herramientas de escritura ni red) es la barrera principal; <code>disallowedTools</code> + <code>block-exploit-write.py</code> son defensa en profundidad.</p>
     </div>
     <div class="adv c5 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg></div>
@@ -1007,7 +1007,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "adv.1.h":"Ransomware prevention","adv.1.p":"A CVE in <b>CISA KEV</b> or with high EPSS in production writes <code>deploy-blocked</code> and stops the deploy. Closes Initial Access (ATT&amp;CK T1190).",
     "adv.2.h":"Shared ledger","adv.2.p":"Single state in <code>.vuln-hunter/ledger.json</code> with a versioned schema. Severity, dedup and report unified — zero prose between agents.",
     "adv.3.h":"Human approval by hash","adv.3.p":"The patcher commits only after approving the <b>exact</b> diff (<code>approve-diff.py</code>). If the code changes, approval expires. Never any auto-merge.",
-    "adv.4.h":"Red-team barrier","adv.4.p":"Conceptual PoCs only. <code>disallowedTools</code> + <code>block-exploit-write.py</code> block malware, shellcode and deployable exploits.",
+    "adv.4.h":"Red-team barrier","adv.4.p":"Conceptual PoCs only. The <code>tools:</code> allowlist (no write/network tools) is the primary barrier; <code>disallowedTools</code> + <code>block-exploit-write.py</code> add defense in depth.",
     "adv.5.h":"Triage that truly prioritizes","adv.5.p":"CVSS v4.0/v3.1 + EPSS + KEV. Filters confidence &lt;8 to documented human review. KEV is an override.",
     "adv.6.h":"Multi-stack &amp; monorepo","adv.6.p":"Detects Python/Django, Next.js/React/TS, Angular and .NET/C#. Per-package scoping with the right SAST/SCA tools.",
     "marco.h":"Usage framework: defensive &amp; authorized","marco.p":"All analysis is on the user's own code, in an authorized audit, to remediate. No third parties attacked, no stepping outside repo scope. Threat-intel only <b>reads</b> official sources.",

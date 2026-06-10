@@ -58,8 +58,9 @@ del mismo objeto. Esto unifica severidad, deduplicación y el informe final.
 `threat-intel-scout` cruza tus dependencias de **producción** con fuentes
 oficiales y marca como **bloqueantes de deploy** los CVE en **CISA KEV** o con
 **EPSS alto** — el vector inicial típico de ransomware (MITRE ATT&CK **T1190**).
-El hook escribe `.vuln-hunter/deploy-blocked` y **detiene el despliegue** hasta
-parchear. Úsalo así:
+`scripts/deploy-gate.py` deriva `.vuln-hunter/deploy-blocked` del ledger y el hook
+**bloquea los comandos de deploy que pasen por Claude** hasta parchear (un deploy
+lanzado fuera del plugin queda fuera de su alcance). Úsalo así:
 ```
 /vuln-hunter:watch --gate          # veredicto APTO / BLOQUEADO
 ```
@@ -140,6 +141,12 @@ vuln-hunter/
 ├── CLAUDE.md      (reglas persistentes)
 └── README.md
 ```
+
+## Aislamiento (importante)
+Auditar un repo ejecuta tooling de ese repo (tests, config/plugins de eslint,
+scripts de install) → puede correr su código. Si **no confías** en el repo,
+córrelo dentro de un contenedor/VM aislada, sin secretos ni red interna. Ver
+[`SECURITY.md`](SECURITY.md).
 
 ## Aviso
 No sustituye a un auditor humano ni a SAST/DAST dedicados; es un primer pase
