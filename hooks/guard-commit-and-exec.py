@@ -57,6 +57,27 @@ REDIRECT_OPTS = {"-C", "--git-dir", "--work-tree"}
 # Separadores de comando shell (tokens) que delimitan segmentos.
 SHELL_SEPARATORS = {";", "&", "|", "&&", "||", "(", ")", "<", ">", "\n"}
 
+# Subcomandos de git que producen commit, para el escaneo RAW (catch-all que ve
+# `git` aunque venga dentro de bash -c "...", eval, $(...), `g=git; $g`, git$IFS).
+# Un tokenizer limpio no ve `git` dentro de un string citado; este regex si. Es
+# CONSERVADOR (puede bloquear un comando que solo MENCIONE git+commit), pero para
+# un gate de seguridad un falso-positivo es preferible a un bypass.
+RAW_COMMIT_RE = re.compile(
+    r"\bgit\b[\s\S]{0,200}?\b(commit|push|merge|am|cherry-pick|revert|rebase|commit-tree)\b",
+    re.IGNORECASE,
+)
+RAW_RESTAGE_RE = re.compile(r"\bcommit\b[\s\S]{0,80}?(\s-a\b|\s--all\b|\s-A\b|\s--patch\b|\s-p\b)", re.IGNORECASE)
+RAW_REDIRECT_RE = re.compile(r"\bgit\b[\s\S]{0,40}?(-C\s|--git-dir|--work-tree)", re.IGNORECASE)
+
+# Quita el contenido de strings citados para que palabras dentro de un mensaje
+# (p.ej. git commit -m "chore(release)...") no disparen el gate de deploy.
+_QUOTED_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+
+
+def strip_quoted(s):
+    return _QUOTED_RE.sub(" ", s)
+
+
 DEPLOY_RE = re.compile(
     r"\b(deploy|release|publish|rollout|provision)\b"
     r"|\bkubectl\s+(apply|rollout|set\s+image|create)\b"
@@ -197,9 +218,13 @@ def git_invocations(cmd):
 def commit_restages_index(args):
     """True si los args de `git commit` re-stagean en el momento del commit
     (`-a/--all/--patch` o pathspecs), divergiendo del indice aprobado."""
+    # OJO: -S/--gpg-sign NO consumen argumento en su forma desnuda (solo
+    # -S<keyid> / --gpg-sign=<keyid> llevan valor pegado), asi que NO van aqui:
+    # incluirlos hacia que `git commit -S -m fix` se leyera como pathspec y se
+    # bloqueara un commit firmado legitimo.
     OPTS_WITH_VALUE = {"-m", "-F", "-C", "-c", "--author", "--date", "--message",
                        "--file", "--reuse-message", "--reedit-message", "--fixup", "--squash",
-                       "--gpg-sign", "-S", "--template", "-t"}
+                       "--template", "-t"}
     i, n = 0, len(args)
     while i < n:
         a = args[i]
@@ -249,7 +274,9 @@ def main() -> int:
             )
 
     # --- 3: gate de despliegue ---
-    if DEPLOY_RE.search(cmd) and os.path.exists(DEPLOY_BLOCK_FILE):
+    # Sobre el comando SIN strings citados: asi `git commit -m "chore(release)"`
+    # no cuenta como deploy (la palabra va dentro del mensaje, no es un comando).
+    if DEPLOY_RE.search(strip_quoted(cmd)) and os.path.exists(DEPLOY_BLOCK_FILE):
         reason = ""
         try:
             with open(DEPLOY_BLOCK_FILE) as fh:
@@ -263,15 +290,19 @@ def main() -> int:
         )
 
     # --- 1: aprobacion del patcher por hash del indice staged ---
+    # Doble deteccion: (a) tokenizer para commits LIMPIOS (preciso, ve flags/args);
+    # (b) escaneo RAW para commits ENCAPSULADOS u ofuscados (bash -c "git commit",
+    # eval, $(echo git) commit, g=git; $g commit, git$IFS commit) que el tokenizer
+    # no ve. Ambos llevan al mismo gate de branch+aprobacion: el bypass por wrapper
+    # queda cerrado porque un commit sin APPROVED se bloquea aunque venga encapsulado.
     invs = git_invocations(cmd)
-    if invs is None:
-        # Inparseable: si menciona git, lo tratamos como intento de commit (conservador).
-        commit_like = [("commit", False, [])] if re.search(r"\bgit\b", cmd) else []
-    else:
-        commit_like = [(s, r, a) for (s, r, a) in invs if s in COMMIT_SUBCMDS]
+    parsed = [(s, r, a) for (s, r, a) in (invs or []) if s in COMMIT_SUBCMDS]
+    raw_commit = bool(RAW_COMMIT_RE.search(cmd))
+    commit_like = bool(parsed) or raw_commit
 
     if commit_like:
-        for sub, redirected, args in commit_like:
+        # rechazos precisos (commit limpio que el tokenizer si parseo)
+        for sub, redirected, args in parsed:
             if redirected:
                 return deny(
                     "BLOQUEADO por vuln-hunter: un commit/push no puede redirigir el "
@@ -284,6 +315,15 @@ def main() -> int:
                     "aprobado. Stagea con `git add` lo exacto, aprueba, y commitea sin "
                     "esos flags."
                 )
+        # caso encapsulado/ofuscado: no se pudo parsear un git limpio. Si la forma
+        # raw revela re-stage/redirect, bloquea (no se puede verificar la aprobacion).
+        if not parsed and (RAW_RESTAGE_RE.search(cmd) or RAW_REDIRECT_RE.search(cmd)):
+            return deny(
+                "BLOQUEADO por vuln-hunter: commit encapsulado con -a/--all/--patch o "
+                "redireccion de repo; no se puede verificar la aprobacion. Ejecuta "
+                "`git commit` DIRECTO (sin bash -c/eval) para que el gate valide el "
+                "indice aprobado."
+            )
 
         branch = current_branch()
         if not branch.startswith(BRANCH_PREFIX):
