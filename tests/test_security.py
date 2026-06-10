@@ -73,6 +73,22 @@ class TestGitParser(unittest.TestCase):
         self.assertFalse(guard.commit_restages_index(["-m", "fix con -a dentro"]))
         self.assertFalse(guard.commit_restages_index(["-m", "msg"]))
 
+    def test_signed_commit_not_blocked(self):
+        # -S (firmar) desnudo no consume argumento: no debe leerse como pathspec.
+        self.assertFalse(guard.commit_restages_index(["-S", "-m", "fix"]))
+        self.assertFalse(guard.commit_restages_index(["--gpg-sign", "-m", "fix"]))
+
+    def test_wrapped_commit_is_detected_as_commit_like(self):
+        # bash -c "git commit" / eval / $() / alias: el tokenizer no ve git limpio,
+        # pero el escaneo RAW si -> se trata como commit (va al gate de aprobacion).
+        for cmd in ['bash -c "git commit -m x"', 'eval "git commit -m x"',
+                    'sh -c "git commit -m x"', '$(echo git) commit -m x',
+                    'g=git; $g commit -m x', 'git$IFS commit -m x']:
+            parsed = [s for (s, _r, _a) in (guard.git_invocations(cmd) or [])
+                      if s in guard.COMMIT_SUBCMDS]
+            self.assertFalse(parsed, cmd)                       # tokenizer no lo ve
+            self.assertTrue(guard.RAW_COMMIT_RE.search(cmd), cmd)  # RAW si
+
 
 class TestOffensiveAndDeploy(unittest.TestCase):
     def _offensive(self, cmd):
@@ -94,18 +110,66 @@ class TestOffensiveAndDeploy(unittest.TestCase):
     def test_deploy_matcher(self):
         for c in ["kubectl apply -f k8s.yaml", "vercel deploy --prod",
                   "helm upgrade app .", "terraform apply", "docker push img:tag"]:
-            self.assertTrue(guard.DEPLOY_RE.search(c), c)
+            self.assertTrue(guard.DEPLOY_RE.search(guard.strip_quoted(c)), c)
+
+    def test_release_commit_message_is_not_a_deploy(self):
+        # FP historico: 'release'/'publish' dentro de un mensaje de commit no es deploy.
+        for c in ['git commit -m "chore(release): v1.2.3 sync manifests"',
+                  "git commit -m 'publish docs'"]:
+            self.assertIsNone(guard.DEPLOY_RE.search(guard.strip_quoted(c)), c)
 
 
 class TestWebfetchAllowlist(unittest.TestCase):
     def test_official_hosts_allowed(self):
         for h in ["api.osv.dev", "services.nvd.nist.gov", "api.first.org",
-                  "www.cisa.gov", "api.github.com"]:
+                  "www.cisa.gov", "api.github.com", "www.oracle.com"]:
             self.assertTrue(webfetch.host_allowed(h), h)
 
     def test_lookalike_rejected(self):
         self.assertFalse(webfetch.host_allowed("api.osv.dev.evil.com"))
         self.assertFalse(webfetch.host_allowed("evil.com"))
+
+    def test_github_apex_and_usercontent_rejected(self):
+        # github.com apex / gist permiten hosting controlable por atacante: fuera.
+        self.assertFalse(webfetch.host_allowed("github.com"))
+        self.assertFalse(webfetch.host_allowed("gist.github.com"))
+        self.assertFalse(webfetch.host_allowed("raw.githubusercontent.com"))
+
+
+class TestWebfetchAttribution(unittest.TestCase):
+    """Prueba el camino end-to-end del hook (no solo host_allowed)."""
+
+    def _hook(self, payload):
+        p = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "hooks/guard-webfetch.py")],
+            input=json.dumps(payload), capture_output=True, text=True,
+        )
+        return p.returncode
+
+    def test_scoped_agent_bad_host_blocked(self):
+        rc = self._hook({"agent_type": "threat-intel-scout",
+                         "tool_input": {"url": "https://evil.example.com/x"}})
+        self.assertEqual(rc, 2)
+
+    def test_scoped_agent_github_apex_blocked(self):
+        rc = self._hook({"agent_type": "threat-intel-scout",
+                         "tool_input": {"url": "https://github.com/a/poc/raw/main/x.sh"}})
+        self.assertEqual(rc, 2)
+
+    def test_scoped_agent_official_allowed(self):
+        rc = self._hook({"agent_type": "threat-intel-scout",
+                         "tool_input": {"url": "https://api.osv.dev/v1/query"}})
+        self.assertEqual(rc, 0)
+
+    def test_other_agent_fail_open(self):
+        # main loop / otro agente: no se restringe (no rompe el WebFetch general).
+        rc = self._hook({"agent_type": "general-purpose",
+                         "tool_input": {"url": "https://evil.example.com/x"}})
+        self.assertEqual(rc, 0)
+
+    def test_no_agent_field_fail_open(self):
+        rc = self._hook({"tool_input": {"url": "https://evil.example.com/x"}})
+        self.assertEqual(rc, 0)
 
 
 class TestDeployGate(unittest.TestCase):
@@ -197,6 +261,27 @@ class TestCommitGateIntegration(unittest.TestCase):
             write("a.txt", "BACKDOOR\n")
             run("add", "a.txt")
             self.assertEqual(self._hook(repo, "git commit -m fix"), 2)  # bloqueado
+
+    def test_wrapped_commit_blocked_without_approval(self):
+        if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
+            self.skipTest("git no disponible")
+        with tempfile.TemporaryDirectory() as repo:
+            run = lambda *a: subprocess.run(["git", "-C", repo, *a], capture_output=True)
+            run("init", "-q")
+            run("config", "user.email", "t@t")
+            run("config", "user.name", "t")
+            run("checkout", "-q", "-b", "vuln-hunter/fix")
+            with open(os.path.join(repo, "a.txt"), "w") as fh:
+                fh.write("base\n")
+            run("add", "a.txt")
+            run("commit", "-qm", "base")
+            os.makedirs(os.path.join(repo, ".vuln-hunter"))
+            with open(os.path.join(repo, "a.txt"), "w") as fh:
+                fh.write("x\n")
+            run("add", "a.txt")  # staged, SIN APPROVED
+            for cmd in ['bash -c "git commit -m x"', 'eval "git commit -m x"',
+                        '$(echo git) commit -m x', 'g=git; $g commit -m x']:
+                self.assertEqual(self._hook(repo, cmd), 2, cmd)  # bypass cerrado
 
 
 if __name__ == "__main__":
