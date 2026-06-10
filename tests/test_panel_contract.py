@@ -60,6 +60,21 @@ class TestPanelReferences(unittest.TestCase):
         # La fuente editable del panel (se compila con scripts/build-panel.sh).
         self.assertTrue(os.path.exists(os.path.join(ROOT, "panel/app.jsx")))
 
+    def test_csp_hash_matches_inline_script(self):
+        # Anti-drift: el hash de la CSP DEBE corresponder al <script> inline real.
+        # Si alguien edita index.html sin correr build-panel.sh, este test falla.
+        import base64
+        import hashlib
+        csp = re.search(r"script-src[^\"]*'sha256-([A-Za-z0-9+/=]+)'", self.html)
+        self.assertIsNotNone(csp, "no hay hash sha256 en la CSP")
+        inline = re.search(r"<script>(.*?)</script>", self.html, re.DOTALL)
+        self.assertIsNotNone(inline, "no hay <script> inline")
+        calc = base64.b64encode(hashlib.sha256(inline.group(1).encode()).digest()).decode()
+        self.assertEqual(
+            calc, csp.group(1),
+            "el hash CSP no corresponde al script inline: corre scripts/build-panel.sh",
+        )
+
     def test_graph_shows_parallel_fork(self):
         # RECON se bifurca a SAST e INTEL (corren en paralelo) y reconvergen.
         # Tolerante al espaciado del JS compilado (["RECON", "SAST"]).

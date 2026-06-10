@@ -12,14 +12,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 BABEL_VER="7.26.4"
+# SRI del transpilador descargado: si unpkg sirve algo distinto, abortamos en vez
+# de ejecutar codigo no verificado vía node -e. Bumpear BABEL_VER exige actualizar esto.
+BABEL_SRI="sha384-x/ilTFv/u/eu6YSmkFDZl5V5Mm/pkxxcVv2cVJOrr1J0rvILhMvRBCy6yA75wYBj"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 command -v node >/dev/null 2>&1 || { echo "build-panel: falta node" >&2; exit 1; }
+command -v openssl >/dev/null 2>&1 || { echo "build-panel: falta openssl (para verificar SRI)" >&2; exit 1; }
 [ -f panel/app.jsx ] || { echo "build-panel: falta panel/app.jsx (fuente)" >&2; exit 1; }
 
 echo "[build-panel] descargando @babel/standalone@${BABEL_VER}…"
 curl -fsSL "https://unpkg.com/@babel/standalone@${BABEL_VER}/babel.min.js" -o "$TMP/babel.js"
+CALC="sha384-$(openssl dgst -sha384 -binary "$TMP/babel.js" | openssl base64 -A)"
+[ "$CALC" = "$BABEL_SRI" ] || { echo "[build-panel] integridad de babel NO coincide:" >&2; echo "  esperado $BABEL_SRI" >&2; echo "  obtenido $CALC" >&2; exit 1; }
+echo "[build-panel] babel verificado (SRI ok)"
 
 echo "[build-panel] transpilando panel/app.jsx…"
 node -e '
