@@ -16,6 +16,12 @@ mkdir -p "$OUT"
 have() { command -v "$1" >/dev/null 2>&1; }
 note() { printf '[vuln-hunter] %s\n' "$1"; }
 
+# AVISO de aislamiento: estas herramientas pueden cargar config/plugins del repo
+# auditado (p.ej. .eslintrc.js) y por tanto ejecutar su codigo. Si el repo no es
+# de confianza, corre esto dentro de un contenedor/VM aislada (ver SECURITY.md).
+# Silencia este aviso con VH_SCAN_NO_WARN=1.
+[ "${VH_SCAN_NO_WARN:-0}" = "1" ] || note "aviso: escanear ejecuta tooling del repo; si no confias en el, aislalo (ver SECURITY.md)"
+
 run() {  # run <nombre> <comando...>
   local name="$1"; shift
   if have "$1"; then
@@ -34,7 +40,9 @@ case "$STACK" in
     run "gitleaks"  gitleaks detect --source "$TARGET" --report-path "$OUT/gitleaks.json" --no-banner
     ;;
   nextjs|react|angular)
-    run "eslint"   npx --yes eslint "$TARGET" --plugin security -f json -o "$OUT/eslint.json"
+    # --no-install: no auto-instala desde el registry (cierra el vector supply-chain
+    # de `npx --yes`). Si eslint no esta presente, se reporta y se omite, no se baja.
+    run "eslint"   npx --no-install eslint "$TARGET" --plugin security -f json -o "$OUT/eslint.json"
     run "semgrep"  semgrep --config p/javascript --config p/typescript --sarif -o "$OUT/semgrep.sarif" "$TARGET"
     run "npm-audit" npm audit --json
     run "gitleaks"  gitleaks detect --source "$TARGET" --report-path "$OUT/gitleaks.json" --no-banner

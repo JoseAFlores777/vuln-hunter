@@ -58,7 +58,57 @@ fi
 
 # servidor estatico en segundo plano, desconectado de esta shell (sobrevive al
 # fin del comando). Mismo patron que /vuln-hunter:panel.
-( nohup python3 -m http.server "$PORT" --directory "$STATE_DIR" >/dev/null 2>&1 & ) >/dev/null 2>&1
+#
+# SEGURIDAD: el directorio servido (.vuln-hunter/) contiene el estado completo de
+# la auditoria (hallazgos, rutas de archivos, CVEs, cadenas de explotacion). Por
+# eso:
+#  - bind SOLO a 127.0.0.1 (loopback). NO 0.0.0.0: no se expone a la LAN.
+#  - allowlist del header Host (Host == localhost/127.0.0.1:PORT) para frenar
+#    DNS-rebinding desde un sitio web malicioso.
+#  - Cache-Control: no-store para que el navegador no deje copias en disco.
+# El servidor se implementa inline (subclase de SimpleHTTPRequestHandler) porque
+# `python3 -m http.server` no permite filtrar Host ni anadir cabeceras.
+SERVER_PY="$(cat <<'PYEOF'
+import os, sys
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+port = int(sys.argv[1]); directory = sys.argv[2]
+allowed_hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *a, **k):
+        super().__init__(*a, directory=directory, **k)
+    def _host_ok(self):
+        host = (self.headers.get("Host") or "").strip()
+        if host in allowed_hosts:
+            return True
+        self.send_response(421)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"vuln-hunter panel: Host no permitido (anti DNS-rebinding).")
+        return False
+    def do_GET(self):
+        if self._host_ok():
+            super().do_GET()
+    def do_HEAD(self):
+        if self._host_ok():
+            super().do_HEAD()
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        super().end_headers()
+    def log_message(self, *a):
+        pass
+
+HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+PYEOF
+)"
+
+nohup python3 -c "$SERVER_PY" "$PORT" "$STATE_DIR" >/dev/null 2>&1 &
+echo $! > "${STATE_DIR}/panel.pid"
+disown 2>/dev/null || true
 
 # espera a que levante (max ~3s) antes de abrir el navegador
 for _ in 1 2 3 4 5 6; do
@@ -67,4 +117,4 @@ for _ in 1 2 3 4 5 6; do
 done
 
 open_url "$URL"
-echo "panel: ${URL} (se refresca cada 2s) · detener: pkill -f \"http.server ${PORT}\""
+echo "panel: ${URL} (loopback · se refresca cada 2s) · detener: kill \$(cat ${STATE_DIR}/panel.pid) 2>/dev/null"

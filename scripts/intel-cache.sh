@@ -8,8 +8,11 @@
 # Uso:
 #   intel-cache.sh get   <clave>                 -> imprime el valor cacheado o vacio (y exit 1 si expiro/no existe)
 #   intel-cache.sh put   <clave> < datos_stdin   -> guarda en cache
-#   intel-cache.sh fetch <clave> <url> [curl_args...]  -> get; si miss, hace curl, guarda y devuelve
+#   intel-cache.sh fetch <clave> <url>            -> get; si miss, hace curl (solo https a fuentes oficiales), guarda y devuelve
 #   intel-cache.sh purge                          -> limpia entradas expiradas
+#
+# SEGURIDAD: `fetch` solo acepta https a un allowlist de hosts oficiales
+# (NVD/OSV/EPSS/CISA/GitHub/MSRC). No reenvia argumentos arbitrarios a curl.
 #
 # Variables:
 #   VH_CACHE_DIR (def .vuln-hunter/cache)
@@ -20,6 +23,29 @@ set -uo pipefail
 CACHE_DIR="${VH_CACHE_DIR:-.vuln-hunter/cache}"
 TTL="${VH_CACHE_TTL:-21600}"
 mkdir -p "$CACHE_DIR"
+chmod 700 "$CACHE_DIR" 2>/dev/null || true
+
+# Solo se consultan fuentes OFICIALES (CLAUDE.md regla 5). Host allowlist para
+# cerrar SSRF: aunque un nombre de paquete malicioso influya la URL, no se puede
+# pivotar a un host arbitrario.
+ALLOWED_HOSTS_RE='^https://(services\.nvd\.nist\.gov|api\.osv\.dev|api\.first\.org|www\.cisa\.gov|api\.github\.com|api\.msrc\.microsoft\.com)(/|$)'
+
+url_allowed() {
+  case "$1" in
+    https://*) ;;                       # solo https
+    *) return 1 ;;
+  esac
+  printf '%s' "$1" | grep -Eq "$ALLOWED_HOSTS_RE"
+}
+
+# Rechaza rutas de cache que sean symlink (un repo auditado no debe poder
+# pre-sembrar la ruta para que escribamos fuera de la cache).
+reject_symlink() {
+  if [ -L "$1" ]; then
+    echo "[intel-cache] ruta de cache es un symlink; abortando: $1" >&2
+    exit 1
+  fi
+}
 
 keyfile() {
   # clave -> ruta de archivo (hash para evitar caracteres invalidos)
@@ -49,19 +75,29 @@ case "$cmd" in
     ;;
   put)
     f="$(keyfile "$1")"
+    reject_symlink "$f"
     cat > "$f"
     ;;
   fetch)
     key="$1"; url="$2"; shift 2
     f="$(keyfile "$key")"
+    reject_symlink "$f"
     if is_fresh "$f"; then cat "$f"; exit 0; fi
+    # Valida la URL ANTES de tocar la red: solo https a fuentes oficiales.
+    if ! url_allowed "$url"; then
+      echo "[intel-cache] URL rechazada (no es https a una fuente oficial): $url" >&2
+      exit 1
+    fi
     # cache miss: consulta. Anade API key de NVD si aplica.
     extra=()
-    if [[ "$url" == *"nvd.nist.gov"* && -n "${NVD_API_KEY:-}" ]]; then
+    if [[ "$url" == https://services.nvd.nist.gov/* && -n "${NVD_API_KEY:-}" ]]; then
       extra=(-H "apiKey: ${NVD_API_KEY}")
     fi
+    # NOTA: NO se reenvian args arbitrarios del caller a curl (eran superficie de
+    # inyeccion de flags). `--` impide que la URL se interprete como opcion;
+    # --proto =https y sin -L evitan downgrade/redirect a otros hosts.
     if command -v curl >/dev/null 2>&1; then
-      if curl -fsSL "${extra[@]}" "$@" "$url" -o "$f"; then
+      if curl -fsS --proto '=https' --proto-redir '=https' --max-redirs 0 "${extra[@]}" -- "$url" -o "$f"; then
         cat "$f"
       else
         echo "[intel-cache] fallo la consulta a $url" >&2

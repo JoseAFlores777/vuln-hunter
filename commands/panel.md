@@ -21,10 +21,11 @@ solo mientras corre la auditoria.
    Es el MISMO helper que `/vuln-hunter:hunt` y `/vuln-hunter:detect` corren solos
    al inicio, asi que aqui solo lo usas para (re)abrirlo manualmente.
 2. Dile al usuario:
-   - URL: `http://localhost:<puerto>/index.html`
+   - URL: `http://localhost:<puerto>/index.html` (el servidor escucha SOLO en
+     loopback / 127.0.0.1: el estado de la auditoria no se expone a la red).
    - El panel se refresca solo cada 2s; deja esta terminal y corre la auditoria en
      otra (o sigue con `/vuln-hunter:hunt`).
-   - Para detenerlo: `pkill -f "http.server <puerto>"`.
+   - Para detenerlo: `kill $(cat .vuln-hunter/panel.pid)`.
 
 ## Nota
 Si aun no existe `.vuln-hunter/ledger.json`, el panel muestra un estado vacio que
