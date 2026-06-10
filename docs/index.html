@@ -381,14 +381,16 @@ h1.hero-title .accent{
 .steps{display:flex;flex-direction:column;gap:16px;max-width:820px}
 .step{display:flex;gap:18px;align-items:flex-start}
 .step .sn{flex:0 0 auto;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-family:var(--hud);font-size:16px;color:var(--cyan);border:1px solid rgba(34,211,238,.3);background:rgba(34,211,238,.06)}
-.step .sc{flex:1}
+.step .sc{flex:1;min-width:0}
 .step h4{margin:0 0 4px;font-size:16px;color:var(--ink)}
 .step p{margin:0 0 12px;color:var(--ink-soft);font-size:14.5px}
 .codeblock{
   position:relative;background:#05080d;border:1px solid var(--line-2);border-radius:10px;
   font-family:var(--mono);font-size:13.5px;overflow:hidden;
 }
-.codeblock pre{margin:0;padding:16px 52px 16px 18px;overflow-x:auto;color:var(--ink-soft);line-height:1.8}
+.codeblock{max-width:100%}
+.codeblock pre{margin:0;padding:16px 52px 16px 18px;overflow-x:auto;color:var(--ink-soft);line-height:1.8;white-space:pre}
+@media (max-width:680px){.codeblock pre{font-size:12.5px;padding:14px 46px 14px 14px}}
 .codeblock .tk-c{color:var(--ink-mute)}
 .codeblock .tk-cmd{color:var(--green-soft)}
 .codeblock .tk-arg{color:var(--cyan-soft)}
@@ -710,7 +712,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
 <section id="panel">
   <span class="eyebrow reveal" data-i18n="panel.eyebrow">Observabilidad</span>
   <h2 class="section-title reveal" data-i18n="panel.title">Un <em>panel vivo</em> de la auditoría</h2>
-  <p class="section-lede reveal" data-i18n="panel.lede">Frontend estático (React por CDN, sin build) que sirves con <code style="font-family:var(--mono);color:var(--green-soft)">python3 -m http.server</code> y hace polling del ledger cada 2s. Mira qué agente trabaja y qué se va encontrando, en tiempo real.</p>
+  <p class="section-lede reveal" data-i18n="panel.lede">Frontend estático (React por CDN con <b>SRI</b>, JSX <b>pre-compilado</b> y <b>CSP estricta</b>) que se sirve <b>solo en 127.0.0.1</b> (loopback, no se expone a la red) y hace polling del ledger cada 2s. Mira qué agente trabaja y qué se va encontrando, en tiempo real.</p>
 
   <div class="shots">
     <figure class="shot reveal">
@@ -762,13 +764,13 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
 <section id="ventajas">
   <span class="eyebrow reveal" data-i18n="adv.eyebrow">Por qué importa</span>
   <h2 class="section-title reveal" data-i18n="adv.title">No es <em>teatro de seguridad</em></h2>
-  <p class="section-lede reveal" data-i18n="adv.lede">Las salvaguardas son hooks deterministas, no solo prompts. La explotabilidad se confirma. Nada se cierra sin evidencia.</p>
+  <p class="section-lede reveal" data-i18n="adv.lede">Las salvaguardas son hooks deterministas como <b>defensa en profundidad</b> (evadibles, no garantías; la barrera primaria es la revisión humana). La explotabilidad se confirma. Nada se cierra sin evidencia.</p>
 
   <div class="adv-grid">
     <div class="adv c1 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/><path d="M12 8v4m0 4h.01"/></svg></div>
       <h3 data-i18n="adv.1.h">Prevención de ransomware</h3>
-      <p data-i18n="adv.1.p">Un CVE en <b>CISA KEV</b> o con EPSS alto en producción escribe <code>deploy-blocked</code> y detiene el deploy. Cierra el Initial Access (ATT&amp;CK T1190).</p>
+      <p data-i18n="adv.1.p">Un CVE en <b>CISA KEV</b> o con EPSS alto en producción hace que <code>deploy-gate.py</code> <b>derive</b> el archivo <code>deploy-blocked</code> del ledger (determinista) y el hook detiene los deploys que pasen por Claude. Señala el Initial Access (ATT&amp;CK T1190).</p>
     </div>
     <div class="adv c2 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7zM8 11h8M8 15h5"/></svg></div>
@@ -778,7 +780,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <div class="adv c3 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
       <h3 data-i18n="adv.3.h">Aprobación humana por hash</h3>
-      <p data-i18n="adv.3.p">El patcher commitea solo tras aprobar el diff <b>exacto</b> (<code>approve-diff.py</code>). Si el código cambia, la aprobación caduca. Nunca hay auto-merge.</p>
+      <p data-i18n="adv.3.p">El patcher commitea solo tras aprobar el <b>índice staged</b> exacto — lo que de verdad se commitea (<code>git diff --cached</code>, vía <code>approve-diff.py</code>). Si re-stageas, la aprobación caduca. Nunca hay auto-merge.</p>
     </div>
     <div class="adv c4 reveal">
       <div class="vic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H4v5M15 3h5v5M9 21H4v-5M15 21h5v-5M9 9h6v6H9z"/></svg></div>
@@ -801,7 +803,7 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg></div>
     <div>
       <h3 data-i18n="marco.h">Marco de uso: defensivo y autorizado</h3>
-      <p data-i18n="marco.p">Todo el análisis es sobre el código del propio usuario, en auditoría autorizada, con fin de remediar. No se atacan terceros ni se sale del scope del repo. El threat-intel solo <b>lee</b> fuentes oficiales.</p>
+      <p data-i18n="marco.p">Todo el análisis es sobre el código del propio usuario, en auditoría autorizada, con fin de remediar. No se atacan terceros ni se sale del scope del repo. El threat-intel solo <b>lee</b> fuentes oficiales (forzado por el hook <code>guard-webfetch.py</code>).</p>
     </div>
   </div>
 </section>
@@ -848,8 +850,9 @@ footer{border-top:1px solid var(--line);margin-top:40px;background:rgba(7,10,15,
         <p data-i18n="ins.s3.p">El fixer no commitea solo. Revisa el diff y aprueba ESE hash.</p>
         <div class="codeblock">
           <button class="copybtn" aria-label="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-<pre data-i18n="ins.s3.code">git diff HEAD                       <span class="tk-c"># revisa</span>
-python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por hash)</span></pre>
+<pre data-i18n="ins.s3.code">git add <span class="tk-arg">&lt;archivos&gt;</span>                 <span class="tk-c"># stagea lo revisado</span>
+git diff --cached HEAD              <span class="tk-c"># revisa el indice staged</span>
+python3 scripts/approve-diff.py     <span class="tk-c"># aprueba ESE indice (por hash)</span></pre>
         </div>
         <p class="note-inline" data-i18n="ins.s3.note"><b>⚠</b> Si editas más, la aprobación caduca: re-aprueba.</p>
       </div>
@@ -892,9 +895,13 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     </div>
   </div>
 
-  <p class="note-inline reveal" style="text-align:center;margin-top:32px;max-width:640px;margin-left:auto;margin-right:auto" data-i18n="lab.foot">
-    No sustituye a un auditor humano ni a SAST/DAST dedicados; es un primer pase disciplinado. Licencia MIT.
-  </p>
+  <div class="marco reveal" style="margin-top:32px">
+    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16v-4m0-4h.01M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg></div>
+    <div>
+      <h3 data-i18n="disc.h">Para qué sirve — y qué no reemplaza</h3>
+      <p data-i18n="disc.p">vuln-hunter te ayuda a <b>identificar, priorizar y mitigar</b> vulnerabilidades temprano (shift-left): un primer pase disciplinado, reproducible y con trazabilidad. Eso sí, <b>no sustituye</b> una auditoría humana independiente, un pentest profesional ni herramientas SAST/DAST dedicadas — y los hooks son defensa en profundidad, no garantías absolutas. Úsalo como <b>complemento</b> que acelera y enfoca el trabajo, y combínalo siempre con medidas más estrictas antes de confiar en producción.</p>
+    </div>
+  </div>
 </section>
 
 <!-- ============ FOOTER ============ -->
@@ -927,7 +934,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     </div>
   </div>
   <div class="foot-bottom" data-i18n="foot.bottom">
-    <b>vuln-hunter</b> v1.2.0 · MIT · hecho por Jose Adolfo Izaguirre Flores · uso defensivo y autorizado
+    <b>vuln-hunter</b> v2.0.0 · MIT · hecho por Jose Adolfo Izaguirre Flores · uso defensivo y autorizado
   </div>
 </footer>
 
@@ -994,7 +1001,7 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "cmd.14":"Resumes from where the previous run stopped: migrates the ledger (backward-compatible) and continues without repeating stages.",
     "cmd.15":"Re-scans a subtree with SAST and merges into the ledger; marks as candidate-resolved what no longer appears.",
     "panel.eyebrow":"Observability","panel.title":"A <em>live panel</em> of the audit",
-    "panel.lede":'Static frontend (React via CDN, no build) served with <code style="font-family:var(--mono);color:var(--green-soft)">python3 -m http.server</code>, polling the ledger every 2s. Watch which agent is working and what is being found, in real time.',
+    "panel.lede":'Static frontend (React via CDN with <b>SRI</b>, <b>pre-compiled</b> JSX and a <b>strict CSP</b>) served <b>on 127.0.0.1 only</b> (loopback, never exposed to the network), polling the ledger every 2s. Watch which agent is working and what is being found, in real time.',
     "panel.cap1":"Full panel: pipeline, live log and findings by state",
     "panel.cap2":"GitHub-Actions-style graph: the active agent spins; SAST and INTEL in parallel",
     "panel.f1.h":"Live pipeline","panel.f1.p":"DAG with a parallel fork; the active node spins. Hover any agent to see what it does.",
@@ -1003,29 +1010,30 @@ python3 scripts/approve-diff.py    <span class="tk-c"># aprueba ESE diff (por ha
     "panel.f4.h":"Copy-paste commands","panel.f4.p":"Copy the Claude Code command to attack one or several findings, check status or resume.",
     "panel.cta":'Launch it with <code>/vuln-hunter:panel</code> and keep it open while the audit runs.',
     "adv.eyebrow":"Why it matters","adv.title":"Not <em>security theater</em>",
-    "adv.lede":"The safeguards are deterministic hooks, not just prompts. Exploitability is confirmed. Nothing closes without evidence.",
-    "adv.1.h":"Ransomware prevention","adv.1.p":"A CVE in <b>CISA KEV</b> or with high EPSS in production writes <code>deploy-blocked</code> and stops the deploy. Closes Initial Access (ATT&amp;CK T1190).",
+    "adv.lede":"The safeguards are deterministic hooks as <b>defense in depth</b> (evadable, not guarantees; the primary barrier is human review). Exploitability is confirmed. Nothing closes without evidence.",
+    "adv.1.h":"Ransomware prevention","adv.1.p":"A CVE in <b>CISA KEV</b> or with high EPSS in production makes <code>deploy-gate.py</code> <b>derive</b> the <code>deploy-blocked</code> file from the ledger (deterministic) and the hook stops deploys that go through Claude. Flags Initial Access (ATT&amp;CK T1190).",
     "adv.2.h":"Shared ledger","adv.2.p":"Single state in <code>.vuln-hunter/ledger.json</code> with a versioned schema. Severity, dedup and report unified — zero prose between agents.",
-    "adv.3.h":"Human approval by hash","adv.3.p":"The patcher commits only after approving the <b>exact</b> diff (<code>approve-diff.py</code>). If the code changes, approval expires. Never any auto-merge.",
+    "adv.3.h":"Human approval by hash","adv.3.p":"The patcher commits only after approving the <b>exact staged index</b> — what actually gets committed (<code>git diff --cached</code>, via <code>approve-diff.py</code>). If you re-stage, approval expires. Never any auto-merge.",
     "adv.4.h":"Red-team barrier","adv.4.p":"Conceptual PoCs only. The <code>tools:</code> allowlist (no write/network tools) is the primary barrier; <code>disallowedTools</code> + <code>block-exploit-write.py</code> add defense in depth.",
     "adv.5.h":"Triage that truly prioritizes","adv.5.p":"CVSS v4.0/v3.1 + EPSS + KEV. Filters confidence &lt;8 to documented human review. KEV is an override.",
     "adv.6.h":"Multi-stack &amp; monorepo","adv.6.p":"Detects Python/Django, Next.js/React/TS, Angular and .NET/C#. Per-package scoping with the right SAST/SCA tools.",
-    "marco.h":"Usage framework: defensive &amp; authorized","marco.p":"All analysis is on the user's own code, in an authorized audit, to remediate. No third parties attacked, no stepping outside repo scope. Threat-intel only <b>reads</b> official sources.",
+    "marco.h":"Usage framework: defensive &amp; authorized","marco.p":"All analysis is on the user's own code, in an authorized audit, to remediate. No third parties attacked, no stepping outside repo scope. Threat-intel only <b>reads</b> official sources (enforced by the <code>guard-webfetch.py</code> hook).",
     "ins.eyebrow":"Start in 60 seconds","ins.title":"Install <em>&amp; first scan</em>",
     "ins.lede":"Inside Claude Code, add the marketplace and install the plugin. Then detect your stacks and launch the hunt.",
     "ins.s1.h":"Add the marketplace and install","ins.s1.p":"Paste these commands into the Claude Code console.",
     "ins.s2.h":"Detect stacks and launch the hunt","ins.s2.p":"detect does the scoping; hunt runs the full flow.",
     "ins.s2.code":'<span class="tk-cmd">/vuln-hunter:detect</span>\n<span class="tk-cmd">/vuln-hunter:hunt</span>\n<span class="tk-c"># dashboard anytime</span>\n<span class="tk-cmd">/vuln-hunter:status</span>',
     "ins.s3.h":"Approve the patch (human gesture)","ins.s3.p":"The fixer won't commit on its own. Review the diff and approve THAT hash.",
-    "ins.s3.code":'git diff HEAD                       <span class="tk-c"># review</span>\npython3 scripts/approve-diff.py    <span class="tk-c"># approve THAT diff (by hash)</span>',
+    "ins.s3.code":'git add <span class="tk-arg">&lt;files&gt;</span>                    <span class="tk-c"># stage what you reviewed</span>\ngit diff --cached HEAD              <span class="tk-c"># review the staged index</span>\npython3 scripts/approve-diff.py     <span class="tk-c"># approve THAT index (by hash)</span>',
     "ins.s3.note":"<b>⚠</b> If you edit further, approval expires: re-approve.",
     "ins.s4.h":"Optional: superpowers (better planning)","ins.s4.p":"Optional dependency that improves the plan stage. Install it only from verified sources.",
     "lab.h":"Measure it before you trust it","lab.p":'vuln-hunter ships a lab with <b>9 planted vulnerabilities</b> and their ground truth. Run the flow in <code style="font-family:var(--mono);color:var(--cyan-soft)">--dry-run</code> and count true positives, false negatives and false positives. That number tells you if the plugin is worth it.',
     "lab.li1":"9 known vulns with verifiable ground truth","lab.li2":"1 negative control that must <b>not</b> be flagged","lab.li3":"Counts TP / FN / FP to measure the hit rate","lab.li4":'Touches nothing real: runs in <code style="font-family:var(--mono);color:var(--cyan-soft)">--dry-run</code>',
     "lab.foot":"It doesn't replace a human auditor or dedicated SAST/DAST; it's a disciplined first pass. MIT license.",
+    "disc.h":"What it's for — and what it doesn't replace","disc.p":"vuln-hunter helps you <b>identify, prioritize and mitigate</b> vulnerabilities early (shift-left): a disciplined, reproducible first pass with traceability. That said, it <b>does not replace</b> an independent human audit, a professional pentest or dedicated SAST/DAST tools — and the hooks are defense in depth, not absolute guarantees. Use it as a <b>complement</b> that speeds up and focuses the work, and always pair it with stricter measures before trusting production.",
     "foot.brand":"Multi-agent offensive-defensive security kit for Claude Code. Detects, watches, triages, fixes and verifies. Defensive &amp; authorized.",
     "foot.nav":"Navigate","foot.res":"Resources","foot.repo":"Repository","foot.author":"Author","foot.contact":"Contact",
-    "foot.bottom":"<b>vuln-hunter</b> v1.2.0 · MIT · made by Jose Adolfo Izaguirre Flores · defensive &amp; authorized use"
+    "foot.bottom":"<b>vuln-hunter</b> v2.0.0 · MIT · made by Jose Adolfo Izaguirre Flores · defensive &amp; authorized use"
   };
   var META = {
     es:{title:"vuln-hunter — Kit multi-agente de seguridad para Claude Code",desc:"vuln-hunter: kit multi-agente OWASP para Claude Code. Detecta, vigila amenazas, tria, planifica, arregla, parchea y verifica vulnerabilidades. Defensivo y autorizado."},

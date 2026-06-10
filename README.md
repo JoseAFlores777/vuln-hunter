@@ -143,12 +143,15 @@ vuln-hunter/
 ├── .claude-plugin/{plugin.json, marketplace.json}
 ├── agents/        (7 subagentes)
 ├── commands/      (15 slash commands)
-├── skills/        (stack-detector, owasp-reference, ledger-contract)
-├── hooks/         (hooks.json + 2 guardianes)
-├── scripts/       (run-scan.sh, intel-cache.sh, approve-diff.py, report.py)
+├── skills/        (stack-detector, owasp-reference, ledger-contract, ...)
+├── hooks/         (hooks.json + 3 guardianes: commit/exec/deploy, exploit-write, webfetch)
+├── scripts/       (run-scan.sh, intel-cache.sh, approve-diff.py, deploy-gate.py,
+│                   report.py, ledger.py, status.py, activity.py, build-panel.sh, ...)
+├── panel/         (index.html compilado + app.jsx fuente)
 ├── schemas/       (ledger.schema.json)
 ├── examples/      (vulnerable-lab con ground truth)
-├── CLAUDE.md      (reglas persistentes)
+├── docs/          (landing + informes de auditoría)
+├── CLAUDE.md      (reglas persistentes)  ·  SECURITY.md  (aislamiento + reporte)
 └── README.md
 ```
 
@@ -158,10 +161,21 @@ scripts de install) → puede correr su código. Si **no confías** en el repo,
 córrelo dentro de un contenedor/VM aislada, sin secretos ni red interna. Ver
 [`SECURITY.md`](SECURITY.md).
 
-## Aviso
-No sustituye a un auditor humano ni a SAST/DAST dedicados; es un primer pase
-disciplinado. Mide su tasa de acierto con el laboratorio antes de confiar en él.
-Licencia MIT.
+## Para qué sirve — y qué no reemplaza
+vuln-hunter te ayuda a **identificar, priorizar y mitigar** vulnerabilidades
+temprano (shift-left): un primer pase **disciplinado, reproducible y con
+trazabilidad** que enfoca dónde mirar y acelera la remediación.
+
+No es recomendable usarlo como **única** medida de seguridad. **No sustituye**:
+- una **auditoría humana independiente** ni un **pentest profesional**;
+- herramientas **SAST/DAST dedicadas** (o comerciales) corriendo en tu pipeline;
+- procesos de **revisión de código** y gestión de vulnerabilidades formales.
+
+Y recuerda: los **hooks son defensa en profundidad evadible**, no garantías; la
+barrera primaria es la **revisión humana** del cambio. Úsalo como **complemento**
+que acelera y enfoca el trabajo, mide su acierto con el laboratorio
+(`examples/vulnerable-lab`), y combínalo siempre con medidas más estrictas antes
+de confiar en producción. Licencia MIT.
 
 ## Visualizacion y guia paso a paso (v1.2)
 Cada agente presenta su resultado con un formato uniforme (skill
