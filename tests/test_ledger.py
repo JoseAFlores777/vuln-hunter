@@ -64,6 +64,15 @@ class TestResumePoint(unittest.TestCase):
         rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {}, "status": "fixing"}])
         self.assertEqual(rp["open"], 1)
 
+    def test_candidate_resolved_suggests_verify(self):
+        rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {},
+                        "status": "candidate-resolved"}])
+        self.assertEqual(rp["next_command"], "/vuln-hunter:verify all")
+
+    def test_candidate_resolved_counts_as_open(self):
+        rp = self._rp([{"id": "V1", "status": "candidate-resolved"}])
+        self.assertEqual(rp["open"], 1)
+
     def test_fixed_suggests_verify(self):
         rp = self._rp([{"id": "V1", "sast": {}, "exploitability": {}, "triage": {}, "fix": {}, "status": "fixed"}])
         self.assertEqual(rp["next_command"], "/vuln-hunter:verify all")

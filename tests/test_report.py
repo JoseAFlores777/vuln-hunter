@@ -37,6 +37,32 @@ class TestComputeClosed(unittest.TestCase):
         L = self._L([{"id": "V1", "status": "fixing", "fix": {"applied": True}}])
         self.assertEqual(report.compute(L)["fixed"], 1)
 
+    def test_status_closed_without_verdict_not_counted_closed(self):
+        # Honestidad (CLAUDE.md regla 9): status:closed sin verdict CLOSED NO cuenta.
+        L = self._L([{"id": "V1", "status": "closed", "triage": {"priority": "P0"}}])
+        C = report.compute(L)
+        self.assertEqual(C["closed"], 0)
+        self.assertEqual(C["closed_unverified"], 1)
+
+    def test_rescan_autofix_not_counted_as_fixed(self):
+        # Un 'fixed' por desaparecer del rescan no es evidencia de correccion.
+        L = self._L([{"id": "V1", "status": "fixed",
+                      "fix": {"applied": True, "source": "rescan"}}])
+        self.assertEqual(report.compute(L)["fixed"], 0)
+
+    def test_candidate_resolved_not_closed_not_fixed(self):
+        # 'desaparecio en rescan' sigue abierto: no cuenta como cerrado ni corregido.
+        L = self._L([{"id": "V1", "status": "candidate-resolved", "triage": {"priority": "P1"}}])
+        C = report.compute(L)
+        self.assertEqual(C["closed"], 0)
+        self.assertEqual(C["fixed"], 0)
+        self.assertTrue(report.is_open(L["findings"][0]))
+
+    def test_nondict_finding_does_not_crash_compute(self):
+        L = self._L(["poison", {"id": "V1", "status": "closed",
+                                "verification": {"verdict": "CLOSED"}}])
+        self.assertEqual(report.compute(L)["closed"], 1)
+
 
 class TestBuildHtmlRich(unittest.TestCase):
     def setUp(self):
@@ -93,9 +119,17 @@ class TestRiskVerdict(unittest.TestCase):
         self.assertEqual(lvl, "alto")
 
     def test_all_closed_is_controlled(self):
-        L = {"findings": [{"id": "V1", "status": "closed", "triage": {"priority": "P0"}}]}
+        # 'controlado' exige cierre CON evidencia (verdict CLOSED), no solo el status.
+        L = {"findings": [{"id": "V1", "status": "closed", "triage": {"priority": "P0"},
+                           "verification": {"verdict": "CLOSED"}}]}
         lvl, _txt, _c = report.risk_verdict(L)
         self.assertEqual(lvl, "controlado")
+
+    def test_closed_without_verdict_stays_high_risk(self):
+        # status:closed sin verificacion -> sigue ABIERTO -> riesgo alto si es P0.
+        L = {"findings": [{"id": "V1", "status": "closed", "triage": {"priority": "P0"}}]}
+        lvl, _txt, _c = report.risk_verdict(L)
+        self.assertEqual(lvl, "alto")
 
 
 if __name__ == "__main__":

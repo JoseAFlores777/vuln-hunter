@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import unittest
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -31,22 +32,39 @@ class TestPanelReferences(unittest.TestCase):
         self.assertIn("ledger.json", self.html)
         self.assertIn("activity.jsonl", self.html)
 
-    def test_uses_react_and_babel_cdn(self):
+    def test_uses_react_cdn_without_inbrowser_babel(self):
+        # React desde CDN (pineado + SRI); el JSX se pre-compila, sin Babel-en-navegador.
         self.assertIn("react@18", self.html)
-        self.assertIn("babel", self.html)
+        self.assertIn("integrity=", self.html)          # SRI en los scripts CDN
+        self.assertNotIn("text/babel", self.html)        # nada de transpile en cliente
+        self.assertNotIn("@babel/standalone", self.html)
+
+    def test_strict_csp_without_unsafe_eval(self):
+        self.assertIn("Content-Security-Policy", self.html)
+        # CSP por hash sha256 del script inline; sin 'unsafe-eval'
+        self.assertIn("'sha256-", self.html)
+        m = re.search(r"script-src[^\"]*", self.html)
+        self.assertIsNotNone(m)
+        self.assertNotIn("unsafe-eval", m.group(0))
 
     def test_renders_core_sections(self):
         for token in ["PipelineGraph", "Bitacora", "FindingsTable"]:
             self.assertIn(token, self.html)
 
     def test_pipeline_graph_is_svg_with_spinner(self):
-        self.assertIn("<svg", self.html)
+        # El JSX <svg> se compila a React.createElement("svg", ...).
+        self.assertIn('createElement("svg"', self.html)
         self.assertIn("spin", self.html)
 
+    def test_panel_source_jsx_exists(self):
+        # La fuente editable del panel (se compila con scripts/build-panel.sh).
+        self.assertTrue(os.path.exists(os.path.join(ROOT, "panel/app.jsx")))
+
     def test_graph_shows_parallel_fork(self):
-        # RECON se bifurca a SAST e INTEL (corren en paralelo) y reconvergen
-        self.assertIn('["RECON","SAST"]', self.html)
-        self.assertIn('["RECON","INTEL"]', self.html)
+        # RECON se bifurca a SAST e INTEL (corren en paralelo) y reconvergen.
+        # Tolerante al espaciado del JS compilado (["RECON", "SAST"]).
+        self.assertRegex(self.html, r'\["RECON",\s*"SAST"\]')
+        self.assertRegex(self.html, r'\["RECON",\s*"INTEL"\]')
 
     def test_polls_on_an_interval(self):
         self.assertIn("setInterval", self.html)
