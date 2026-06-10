@@ -45,7 +45,31 @@ def atomic_write_json(path, data):
 CURRENT_SCHEMA = "1.2"
 DEFAULT_STATUS = "hypothesis"
 # Abiertos = aun requieren accion. 'fixing' = el fixer empezo pero no termino.
-OPEN_STATUSES = {None, "hypothesis", "confirmed", "triaged", "planned", "fixing"}
+# 'candidate-resolved' = desaparecio en rescan pero sin verificar: sigue abierto.
+OPEN_STATUSES = {None, "hypothesis", "confirmed", "triaged", "planned", "fixing", "candidate-resolved"}
+
+
+def _is_open(f):
+    return isinstance(f, dict) and f.get("status") not in ("closed", "filtered")
+
+
+def _core_next(findings):
+    """Router COMPARTIDO de la etapa de findings (tras detect+scan). Fuente unica
+    para resume_point y status.py: asi no pueden discrepar en este tramo. Las
+    superficies anaden por su cuenta los gates previos (detect/scan/plan)."""
+    findings = [f for f in findings if isinstance(f, dict)]
+    if any(f.get("source") == "sast" and "exploitability" not in f and _is_open(f) for f in findings):
+        return "/vuln-hunter:redteam all"
+    # candidate-resolved -> verify ANTES que fix/patch: no hay diff que aprobar.
+    if any(f.get("status") == "candidate-resolved" for f in findings):
+        return "/vuln-hunter:verify all"
+    if any(_is_open(f) and "triage" not in f for f in findings):
+        return "/vuln-hunter:triage"
+    if any(f.get("status") in OPEN_STATUSES for f in findings):
+        return "/vuln-hunter:fix all"
+    if any(f.get("status") == "fixed" for f in findings):
+        return "/vuln-hunter:verify all"
+    return "/vuln-hunter:report"
 
 # Orden canonico de etapas (coincide con activity.py y el panel).
 def _has(L, key):
@@ -89,28 +113,8 @@ def resume_point(ledger):
     findings = [f for f in ledger.get("findings", []) if isinstance(f, dict)]
     completed = [name for name, done in STAGE_DONE if done(ledger)]
 
-    def is_open(f):
-        return f.get("status") not in ("closed", "filtered")
-
-    if not findings:
-        nxt = "/vuln-hunter:scan"
-    elif any(f.get("source") == "sast" and "exploitability" not in f and is_open(f) for f in findings):
-        nxt = "/vuln-hunter:redteam all"
-    # 'candidate-resolved' (desaparecio en rescan) sigue ABIERTO: lo confirma verify.
-    elif any(f.get("status") == "candidate-resolved" for f in findings):
-        nxt = "/vuln-hunter:verify all"
-    # Cualquier hallazgo ABIERTO sin triage (incluye SCA/intel, que no pasa por
-    # red-team) debe ir a triage antes que a fix.
-    elif any(is_open(f) and "triage" not in f for f in findings):
-        nxt = "/vuln-hunter:triage"
-    elif any(f.get("status") in OPEN_STATUSES for f in findings):
-        nxt = "/vuln-hunter:fix all"
-    elif any(f.get("status") == "fixed" for f in findings):
-        nxt = "/vuln-hunter:verify all"
-    else:
-        nxt = "/vuln-hunter:report"
-
-    open_n = sum(1 for f in findings if is_open(f))
+    nxt = "/vuln-hunter:scan" if not findings else _core_next(findings)
+    open_n = sum(1 for f in findings if _is_open(f))
     return {
         "schema_version": ledger.get("schema_version"),
         "completed": completed,

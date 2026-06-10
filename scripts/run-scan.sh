@@ -40,9 +40,20 @@ case "$STACK" in
     run "gitleaks"  gitleaks detect --source "$TARGET" --report-path "$OUT/gitleaks.json" --no-banner
     ;;
   nextjs|react|angular)
-    # --no-install: no auto-instala desde el registry (cierra el vector supply-chain
-    # de `npx --yes`). Si eslint no esta presente, se reporta y se omite, no se baja.
-    run "eslint"   npx --no-install eslint "$TARGET" --plugin security -f json -o "$OUT/eslint.json"
+    # eslint con --no-install: no auto-instala del registry (cierra el supply-chain
+    # de `npx --yes`). Distinguimos honestamente "no instalado" (sin salida) de
+    # "corrio" (genera eslint.json) en vez de reportar un falso "termino con hallazgos".
+    if have npx; then
+      note "ejecutando: eslint"
+      npx --no-install eslint "$TARGET" --plugin security -f json -o "$OUT/eslint.json" >/dev/null 2>&1 || true
+      if [ -s "$OUT/eslint.json" ]; then
+        note "eslint: salida en $OUT/eslint.json"
+      else
+        note "OMITIDO (eslint): no esta instalado localmente. Para el SAST de JS/TS: npm i -D eslint eslint-plugin-security"
+      fi
+    else
+      note "OMITIDO (eslint): 'npx' no disponible"
+    fi
     run "semgrep"  semgrep --config p/javascript --config p/typescript --sarif -o "$OUT/semgrep.sarif" "$TARGET"
     run "npm-audit" npm audit --json
     run "gitleaks"  gitleaks detect --source "$TARGET" --report-path "$OUT/gitleaks.json" --no-banner

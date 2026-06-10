@@ -66,10 +66,12 @@ def next_command(L):
         return "/vuln-hunter:plan", "Generar el plan de remediacion"
     if not has_fix and has_plan:
         return "/vuln-hunter:fix all", "Aplicar fixes de causa raiz (sin commit)"
-    if has_fix and not has_verify:
-        return "/vuln-hunter:patch  → luego  /vuln-hunter:verify", "Aprobar diffs (por hash) y verificar el cierre"
+    # candidate-resolved va a verify ANTES que patch: no hay diff que aprobar, solo
+    # confirmar que el hallazgo desaparecio (coincide con ledger.py:resume_point).
     if has_candidate and not has_verify:
         return "/vuln-hunter:verify all", "Confirmar candidatos a resuelto (rescan los limpio; falta verificar el cierre)"
+    if has_fix and not has_verify:
+        return "/vuln-hunter:patch  → luego  /vuln-hunter:verify", "Aprobar diffs (por hash) y verificar el cierre"
     if has_verify:
         return "/vuln-hunter:report", "Generar el informe final de auditoria"
     if kev:

@@ -24,18 +24,20 @@ from urllib.parse import urlparse
 
 SCOPED_AGENT = "threat-intel-scout"
 
-# Fuentes oficiales de vulnerabilidades + avisos de vendor que el agente consulta.
-# Extiende esta lista si una fuente oficial legitima queda fuera.
+# Fuentes oficiales de vulnerabilidades + avisos de vendor que el agente consulta
+# (las que threat-intel-scout.md lista). Extiende esta lista si una fuente oficial
+# legitima queda fuera. NO se incluye el apex `github.com`: permitiria raw/gist
+# (contenido controlable por atacante); solo `api.github.com` (GitHub Advisories API).
 ALLOWED_HOSTS = {
     "nvd.nist.gov", "services.nvd.nist.gov",
     "osv.dev", "api.osv.dev",
     "first.org", "api.first.org",
     "cisa.gov", "www.cisa.gov",
-    "github.com", "api.github.com",            # GitHub Security Advisories
+    "api.github.com",                           # GitHub Security Advisories (API, no apex)
     "msrc.microsoft.com", "api.msrc.microsoft.com",
     "djangoproject.com", "www.djangoproject.com",
     "nodejs.org", "nextjs.org",
-    "groups.google.com",                        # django-announce
+    "oracle.com", "www.oracle.com",             # Oracle Critical Patch Update
     "security-tracker.debian.org",
 }
 
