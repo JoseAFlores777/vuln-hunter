@@ -28,6 +28,7 @@ guard = _load("hooks/guard-commit-and-exec.py", "guard_commit")
 webfetch = _load("hooks/guard-webfetch.py", "guard_webfetch")
 deploy_gate = _load("scripts/deploy-gate.py", "deploy_gate")
 activity = _load("scripts/activity.py", "vh_activity")
+archive = _load("scripts/archive-run.py", "vh_archive")
 
 
 class TestGitParser(unittest.TestCase):
@@ -206,6 +207,52 @@ class TestActivityReservedKeys(unittest.TestCase):
             self.assertEqual(rec["type"], "finding:new")
             self.assertNotEqual(rec["ts"], "1999")
             self.assertEqual(rec["id"], "V1")
+
+
+class TestArchiveRun(unittest.TestCase):
+    def _ledger(self, started, scope):
+        return {"schema_version": "1.2",
+                "run": {"started_at": started, "scope": scope, "stacks": ["py"]},
+                "findings": [{"id": "V1", "status": "closed",
+                              "verification": {"verdict": "CLOSED"},
+                              "triage": {"priority": "P0"},
+                              "intel": {"in_cisa_kev": True}}]}
+
+    def _archive(self, d, led):
+        p = os.path.join(d, "ledger.json")
+        with open(p, "w") as fh:
+            json.dump(led, fh)
+        rc = archive.main(["archive-run.py", p])
+        self.assertEqual(rc, 0)
+        with open(os.path.join(d, "history", "index.json")) as fh:
+            return json.load(fh)
+
+    def test_snapshot_and_index(self):
+        with tempfile.TemporaryDirectory() as d:
+            idx = self._archive(d, self._ledger("2026-06-01T09:00:00", "apps/web"))
+            self.assertEqual(len(idx), 1)
+            rid = idx[0]["id"]
+            self.assertTrue(os.path.exists(os.path.join(d, "history", rid, "ledger.json")))
+            self.assertEqual(idx[0]["total"], 1)
+            self.assertEqual(idx[0]["kev"], 1)
+            self.assertEqual(idx[0]["closed"], 1)
+
+    def test_idempotent_same_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._archive(d, self._ledger("2026-06-01T09:00:00", "apps/web"))
+            idx = self._archive(d, self._ledger("2026-06-01T09:00:00", "apps/web"))
+            self.assertEqual(len(idx), 1)  # mismo run -> 1 entrada
+
+    def test_distinct_runs_accumulate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._archive(d, self._ledger("2026-06-01T09:00:00", "apps/web"))
+            idx = self._archive(d, self._ledger("2026-06-02T09:00:00", "services/api"))
+            self.assertEqual(len(idx), 2)
+
+    def test_run_id_is_filesystem_safe(self):
+        rid = archive.run_id({"run": {"started_at": "2026-06-01T09:00:00", "scope": "a/b:c"}})
+        self.assertNotIn(":", rid)
+        self.assertNotIn("/", rid)
 
 
 class TestVersionLockstep(unittest.TestCase):

@@ -28,9 +28,21 @@ El informe tiene tres secciones:
    Action Plan priorizado (Inmediato / Esta semana / Este mes).
 3. **Resultados** — fixes aplicados, verificacion, "Que esta seguro" y estado final.
 
+## Archiva la corrida al historial (automatico)
+Tras generar el informe, snapshotea esta corrida al historial LOCAL para que el
+panel pueda cargarla despues (modo solo-lectura):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/archive-run.py .vuln-hunter/ledger.json
+```
+Esto copia el ledger + activity + el informe a `.vuln-hunter/history/<id>/` y
+actualiza `history/index.json`. Es idempotente (re-archivar la misma corrida la
+sobreescribe). El historial es LOCAL (`.vuln-hunter/` esta en .gitignore): no se
+commitea, asi que los detalles de hallazgos no se publican en git.
+
 Luego:
 1. Confirma las rutas generadas y un resumen de conteos (P0..P3, en KEV).
 2. Recuerda al usuario que puede **descargarlo desde el panel** (boton "Informe")
-   o abrir `.vuln-hunter/audit-report.html` y usar "Descargar PDF".
+   o abrir `.vuln-hunter/audit-report.html` y usar "Descargar PDF", y que el panel
+   tiene un **selector de corridas** para revisar auditorias pasadas.
 
 Todo es reproducible: re-generarlo con el mismo ledger da el mismo resultado.

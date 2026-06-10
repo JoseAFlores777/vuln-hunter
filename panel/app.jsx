@@ -501,22 +501,60 @@ function FindingsPanel({findings}){
   );
 }
 
+// Etiqueta corta de una corrida del historial para el selector.
+function runShort(r){
+  const when = (r.started_at||r.id||"").replace("T"," ").slice(0,16);
+  const p0 = (r.by_prio||{}).P0||0;
+  return (r.scope||"repo")+" · "+when+" · P0:"+p0+"/"+(r.total||0)+" · "+(r.verdict||"—");
+}
+
+// Selector de corridas: "En vivo" + historicas (solo lectura).
+function RunSelector({runs,view,setView}){
+  if(!runs || !runs.length) return null;
+  return (
+    <div className="block" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span className="eyebrow" style={{margin:0}}>Corridas</span>
+      <select value={view} onChange={e=>setView(e.target.value)}
+        style={{fontFamily:"var(--mono)",fontSize:"12.5px",background:"var(--bg-2)",color:"var(--ink)",
+                border:"1px solid var(--line-2)",borderRadius:"9px",padding:"7px 10px",cursor:"pointer",maxWidth:"100%"}}>
+        <option value="live">● En vivo (corrida actual)</option>
+        {runs.slice().reverse().map(r=>(
+          <option key={r.id} value={r.id}>{runShort(r)}</option>
+        ))}
+      </select>
+      {view!=="live" && <span className="chip" style={{borderColor:"var(--amber)",color:"var(--amber)"}}>⏱ histórico · solo lectura</span>}
+    </div>
+  );
+}
+
 function App(){
   const [ledger,setLedger] = useState(null);
   const [activity,setActivity] = useState([]);
   const [err,setErr] = useState(null);
   const [updated,setUpdated] = useState(null);
+  const [runs,setRuns] = useState(null);   // historial (history/index.json) o null
+  const [view,setView] = useState("live");  // "live" o id de una corrida pasada
 
+  // carga el indice del historial (best-effort; si no existe, no pasa nada)
+  useEffect(()=>{ fetchJSON("history/index.json").then(r=>{ if(Array.isArray(r)) setRuns(r); }).catch(()=>{}); },[]);
+
+  const isLive = view==="live";
+  const base = isLive ? "" : ("history/"+view+"/");
   const poll = useCallback(async ()=>{
     try{
-      const L = await fetchJSON("ledger.json");
-      const A = await fetchJSONL("activity.jsonl");
+      const L = await fetchJSON(base+"ledger.json");
+      const A = await fetchJSONL(base+"activity.jsonl");
       setLedger(L); setActivity(A); setErr(null);
       setUpdated(new Date().toLocaleTimeString());
     }catch(e){ setErr(String(e)); }
-  },[]);
+  },[base]);
 
-  useEffect(()=>{ poll(); const id=setInterval(poll,2000); return ()=>clearInterval(id); },[poll]);
+  // Live: polling cada 2s. Historico: snapshot estatico -> una sola carga.
+  useEffect(()=>{
+    poll();
+    if(!isLive) return;
+    const id=setInterval(poll,2000); return ()=>clearInterval(id);
+  },[poll,isLive]);
 
   // Tooltip de glosario: un solo elemento fijo posicionado en hover/focus de .gloss
   // (position:fixed -> no lo recortan los contenedores con overflow:hidden, como las tablas).
@@ -562,13 +600,16 @@ function App(){
   const runDone = activity.some(e=>e.type==="run:done");
   const kev = findings.filter(f=>(f.intel||{}).in_cisa_kev).length;
 
+  const showLive = isLive && !runDone;
   return (
     <div className="wrap">
       <div className="brand">
-        {!runDone && <span className="bdot"></span>}vuln-hunter<span className="slash">//</span>panel vivo
-        {!runDone && <span className="liveword">live</span>}
+        {showLive && <span className="bdot"></span>}vuln-hunter<span className="slash">//</span>panel {isLive?"vivo":"histórico"}
+        {showLive && <span className="liveword">live</span>}
       </div>
-      <div className="sub">scope: <b>{run.scope||"repo completo"}</b> · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {runDone?"finalizada":"en curso"} · act {updated||"—"}</div>
+      <div className="sub">scope: <b>{run.scope||"repo completo"}</b> · branch: {run.branch||"—"} · OWASP {run.owasp_version||"2025"} · stacks: {(run.stacks||[]).join(", ")||"—"} · {isLive?(runDone?"finalizada":"en curso"):"corrida archivada"} · act {updated||"—"}</div>
+
+      <RunSelector runs={runs} view={view} setView={setView}/>
 
       {kev>0 && <div className="alert"><span className="aic">⚠</span><div className="atxt"><b>Atención:</b> {kev} dependencia(s) de producción con <Gloss term="CVE">CVE</Gloss> en <Ext href={KEV_URL} title="Catálogo CISA KEV"><Gloss term="KEV">CISA KEV</Gloss></Ext>. El deploy queda bloqueado hasta parchear (vector típico de ransomware, <Ext href={T1190_URL} title="MITRE ATT&CK"><Gloss term="T1190">MITRE T1190</Gloss></Ext>).</div></div>}
 
@@ -578,7 +619,7 @@ function App(){
       <Bitacora activity={activity} findings={findings}/>
       <FindingsPanel findings={findings}/>
 
-      <footer>Datos: <b>.vuln-hunter/ledger.json</b> + <b>activity.jsonl</b> · panel estático (React CDN) · polling 2s · vuln-hunter no sustituye auditoría humana.</footer>
+      <footer>Datos: <b>.vuln-hunter/ledger.json</b> + <b>activity.jsonl</b> · historial en <b>.vuln-hunter/history/</b> (selector arriba) · panel estático loopback · vuln-hunter no sustituye auditoría humana.</footer>
     </div>
   );
 }

@@ -27,6 +27,14 @@ solo mientras corre la auditoria.
      otra (o sigue con `/vuln-hunter:hunt`).
    - Para detenerlo: `kill $(cat .vuln-hunter/panel.pid)`.
 
+## Historial de corridas
+El panel trae un **selector de corridas** (arriba): "En vivo" muestra la auditoria
+actual con polling; al elegir una corrida pasada, carga su snapshot en modo
+**solo-lectura** (sin polling). Las corridas se archivan solas al generar el
+informe (`/vuln-hunter:report` -> `scripts/archive-run.py`) en
+`.vuln-hunter/history/`. El historial es LOCAL (`.vuln-hunter/` esta en .gitignore):
+no se commitea.
+
 ## Nota
 Si aun no existe `.vuln-hunter/ledger.json`, el panel muestra un estado vacio que
 invita a correr `/vuln-hunter:detect` o `/vuln-hunter:hunt`. No es un error.

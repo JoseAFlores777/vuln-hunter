@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-ttcGFxz/CW2f2qNsp8wIYrdV5I7WnPmtOuh60P/S0uc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-YFoxLiDJcKh5sLJWXhHJwrJeyJHv6B641sixdjJUQUY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="color-scheme" content="dark" />
 <title>vuln-hunter // panel vivo</title>
@@ -1382,15 +1382,81 @@ function FindingsPanel({
     bucket: active
   })));
 }
+
+// Etiqueta corta de una corrida del historial para el selector.
+function runShort(r) {
+  const when = (r.started_at || r.id || "").replace("T", " ").slice(0, 16);
+  const p0 = (r.by_prio || {}).P0 || 0;
+  return (r.scope || "repo") + " · " + when + " · P0:" + p0 + "/" + (r.total || 0) + " · " + (r.verdict || "—");
+}
+
+// Selector de corridas: "En vivo" + historicas (solo lectura).
+function RunSelector({
+  runs,
+  view,
+  setView
+}) {
+  if (!runs || !runs.length) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "block",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "eyebrow",
+    style: {
+      margin: 0
+    }
+  }, "Corridas"), /*#__PURE__*/React.createElement("select", {
+    value: view,
+    onChange: e => setView(e.target.value),
+    style: {
+      fontFamily: "var(--mono)",
+      fontSize: "12.5px",
+      background: "var(--bg-2)",
+      color: "var(--ink)",
+      border: "1px solid var(--line-2)",
+      borderRadius: "9px",
+      padding: "7px 10px",
+      cursor: "pointer",
+      maxWidth: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "live"
+  }, "\u25CF En vivo (corrida actual)"), runs.slice().reverse().map(r => /*#__PURE__*/React.createElement("option", {
+    key: r.id,
+    value: r.id
+  }, runShort(r)))), view !== "live" && /*#__PURE__*/React.createElement("span", {
+    className: "chip",
+    style: {
+      borderColor: "var(--amber)",
+      color: "var(--amber)"
+    }
+  }, "\u23F1 hist\xF3rico \xB7 solo lectura"));
+}
 function App() {
   const [ledger, setLedger] = useState(null);
   const [activity, setActivity] = useState([]);
   const [err, setErr] = useState(null);
   const [updated, setUpdated] = useState(null);
+  const [runs, setRuns] = useState(null); // historial (history/index.json) o null
+  const [view, setView] = useState("live"); // "live" o id de una corrida pasada
+
+  // carga el indice del historial (best-effort; si no existe, no pasa nada)
+  useEffect(() => {
+    fetchJSON("history/index.json").then(r => {
+      if (Array.isArray(r)) setRuns(r);
+    }).catch(() => {});
+  }, []);
+  const isLive = view === "live";
+  const base = isLive ? "" : "history/" + view + "/";
   const poll = useCallback(async () => {
     try {
-      const L = await fetchJSON("ledger.json");
-      const A = await fetchJSONL("activity.jsonl");
+      const L = await fetchJSON(base + "ledger.json");
+      const A = await fetchJSONL(base + "activity.jsonl");
       setLedger(L);
       setActivity(A);
       setErr(null);
@@ -1398,12 +1464,15 @@ function App() {
     } catch (e) {
       setErr(String(e));
     }
-  }, []);
+  }, [base]);
+
+  // Live: polling cada 2s. Historico: snapshot estatico -> una sola carga.
   useEffect(() => {
     poll();
+    if (!isLive) return;
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
-  }, [poll]);
+  }, [poll, isLive]);
 
   // Tooltip de glosario: un solo elemento fijo posicionado en hover/focus de .gloss
   // (position:fixed -> no lo recortan los contenedores con overflow:hidden, como las tablas).
@@ -1477,19 +1546,24 @@ function App() {
   const findings = ledger.findings || [];
   const runDone = activity.some(e => e.type === "run:done");
   const kev = findings.filter(f => (f.intel || {}).in_cisa_kev).length;
+  const showLive = isLive && !runDone;
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "brand"
-  }, !runDone && /*#__PURE__*/React.createElement("span", {
+  }, showLive && /*#__PURE__*/React.createElement("span", {
     className: "bdot"
   }), "vuln-hunter", /*#__PURE__*/React.createElement("span", {
     className: "slash"
-  }, "//"), "panel vivo", !runDone && /*#__PURE__*/React.createElement("span", {
+  }, "//"), "panel ", isLive ? "vivo" : "histórico", showLive && /*#__PURE__*/React.createElement("span", {
     className: "liveword"
   }, "live")), /*#__PURE__*/React.createElement("div", {
     className: "sub"
-  }, "scope: ", /*#__PURE__*/React.createElement("b", null, run.scope || "repo completo"), " \xB7 branch: ", run.branch || "—", " \xB7 OWASP ", run.owasp_version || "2025", " \xB7 stacks: ", (run.stacks || []).join(", ") || "—", " \xB7 ", runDone ? "finalizada" : "en curso", " \xB7 act ", updated || "—"), kev > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "scope: ", /*#__PURE__*/React.createElement("b", null, run.scope || "repo completo"), " \xB7 branch: ", run.branch || "—", " \xB7 OWASP ", run.owasp_version || "2025", " \xB7 stacks: ", (run.stacks || []).join(", ") || "—", " \xB7 ", isLive ? runDone ? "finalizada" : "en curso" : "corrida archivada", " \xB7 act ", updated || "—"), /*#__PURE__*/React.createElement(RunSelector, {
+    runs: runs,
+    view: view,
+    setView: setView
+  }), kev > 0 && /*#__PURE__*/React.createElement("div", {
     className: "alert"
   }, /*#__PURE__*/React.createElement("span", {
     className: "aic"
@@ -1521,7 +1595,7 @@ function App() {
     findings: findings
   }), /*#__PURE__*/React.createElement(FindingsPanel, {
     findings: findings
-  }), /*#__PURE__*/React.createElement("footer", null, "Datos: ", /*#__PURE__*/React.createElement("b", null, ".vuln-hunter/ledger.json"), " + ", /*#__PURE__*/React.createElement("b", null, "activity.jsonl"), " \xB7 panel est\xE1tico (React CDN) \xB7 polling 2s \xB7 vuln-hunter no sustituye auditor\xEDa humana."));
+  }), /*#__PURE__*/React.createElement("footer", null, "Datos: ", /*#__PURE__*/React.createElement("b", null, ".vuln-hunter/ledger.json"), " + ", /*#__PURE__*/React.createElement("b", null, "activity.jsonl"), " \xB7 historial en ", /*#__PURE__*/React.createElement("b", null, ".vuln-hunter/history/"), " (selector arriba) \xB7 panel est\xE1tico loopback \xB7 vuln-hunter no sustituye auditor\xEDa humana."));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>

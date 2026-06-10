@@ -190,12 +190,19 @@ donde estas en el flujo, los hallazgos por severidad, la alerta de KEV y el
 siguiente comando recomendado. Las decisiones se piden con preguntas unicas y
 enumeradas (una a la vez), o con botones si el entorno los soporta.
 
-Para verlo en vivo, `/vuln-hunter:panel` levanta un frontend estatico (sin build,
-sin instalar nada) servido con `python3 -m http.server`. La verdad de estado es el
-ledger; `activity.jsonl` (append-only, escrito por `scripts/activity.py`) es el
-timeline. El panel hace polling cada 2s, asi que muestra los hallazgos y su
-mitigacion en tiempo real mientras corre la auditoria. Ver
-`docs/adr/0001-panel-liveness-architecture.md`.
+Para verlo en vivo, `/vuln-hunter:panel` levanta un frontend estatico (JSX
+pre-compilado, sin build en el navegador) servido **solo en 127.0.0.1**. La verdad
+de estado es el ledger; `activity.jsonl` (append-only, escrito por
+`scripts/activity.py`) es el timeline. El panel hace polling cada 2s mientras corre
+la auditoria. Ver `docs/adr/0001-panel-liveness-architecture.md`.
+
+**Historial de corridas.** Al generar el informe, `scripts/archive-run.py`
+snapshotea la corrida (ledger + activity + informe + resumen) a
+`.vuln-hunter/history/<id>/` y actualiza `history/index.json`. El panel trae un
+**selector de corridas**: "En vivo" (la actual, con polling) o cualquier auditoria
+pasada en modo solo-lectura. El historial es **local** (`.vuln-hunter/` esta en
+.gitignore): persiste en tu maquina pero no se commitea, asi los detalles de
+hallazgos no se publican en git.
 
 ![Panel vivo de vuln-hunter: pipeline tipo GitHub Actions, bitacora y hallazgos por estado](docs/assets/panel-overview.png)
 

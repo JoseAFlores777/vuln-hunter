@@ -60,6 +60,12 @@ class TestPanelReferences(unittest.TestCase):
         # La fuente editable del panel (se compila con scripts/build-panel.sh).
         self.assertTrue(os.path.exists(os.path.join(ROOT, "panel/app.jsx")))
 
+    def test_run_history_selector(self):
+        # Selector de corridas: carga history/index.json y permite ver pasadas.
+        self.assertIn("history/index.json", self.html)
+        self.assertIn("RunSelector", self.html)
+        self.assertIn("En vivo", self.html)
+
     def test_csp_hash_matches_inline_script(self):
         # Anti-drift: el hash de la CSP DEBE corresponder al <script> inline real.
         # Si alguien edita index.html sin correr build-panel.sh, este test falla.
