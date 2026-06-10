@@ -47,10 +47,11 @@ Devuelve las etapas completas y el `next_command` de la cadena. Lo consumen
 ledger existente: enriquece sobre el.
 
 ## Inicializacion
-Si `.vuln-hunter/ledger.json` no existe, crea el esqueleto:
+Si `.vuln-hunter/ledger.json` no existe, crea el esqueleto (o, mejor, corre
+`ledger.py migrate` para no duplicar el numero de version a mano):
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "run": { "started_at": "<ISO>", "scope": "<scope>", "owasp_version": "2025", "branch": "<branch>", "stacks": [] },
   "findings": []
 }

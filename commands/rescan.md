@@ -25,15 +25,13 @@ Re-escanea SOLO el subarbol **$ARGUMENTS** con el subagente **sast-analyst**
 2. **Nuevo**: agregalo con `id` nuevo (VULN-NNN) y `status:"hypothesis"`. Emite
    `finding:new`.
 3. **Previo del path que YA NO aparece** y estaba ABIERTO (status hypothesis/
-   confirmed/triaged/planned): es candidato a resuelto. Marca `status:"fixed"` y
-   añade:
-   ```json
-   "fix": { "root_cause": "(ya no detectado en rescan)",
-            "summary": "Desaparecio en rescan; pendiente de verificacion",
-            "applied": true, "source": "rescan" }
-   ```
-   NO lo borres (conserva trazabilidad). Los que ya estaban `fixed`/`closed`/
-   `filtered` no se tocan.
+   confirmed/triaged/planned): es candidato a resuelto, NO un fix confirmado.
+   Desaparecer del escaner NO es evidencia de correccion (pudo borrarse, moverse
+   fuera del path, o el escaner cambio). Marca `status:"candidate-resolved"` y
+   **NO** escribas un objeto `fix` ni `applied:true` (eso mentiria: nadie corrigio
+   nada). El finding sigue ABIERTO hasta que `verify-engineer` lo confirme. NO lo
+   borres (conserva trazabilidad). Los que ya estaban `fixed`/`closed`/`filtered`
+   no se tocan.
 
 Usa `ledger.py under .vuln-hunter/ledger.json $ARGUMENTS` para saber que findings
 habia en ese path ANTES del rescan y poder comparar.

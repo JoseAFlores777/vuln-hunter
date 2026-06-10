@@ -39,8 +39,13 @@ def append_event(event_type, fields, path):
     if event_type not in EVENT_TYPES:
         print(f"vuln-hunter activity: tipo desconocido '{event_type}'", file=sys.stderr)
         return 2
-    rec = {"ts": datetime.now().isoformat(timespec="seconds"), "type": event_type}
-    rec.update(fields)
+    # Construye desde fields y FIJA ts/type al final: un campo k=v no puede
+    # sobrescribir el tipo de evento ni el timestamp (clave reservada).
+    rec = dict(fields)
+    rec.pop("type", None)
+    rec.pop("ts", None)
+    rec["ts"] = datetime.now().isoformat(timespec="seconds")
+    rec["type"] = event_type
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "a") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")

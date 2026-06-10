@@ -38,12 +38,12 @@ def stage_done(L, key):
         return bool(L.get("plan_ref"))
     if key == "detect":
         return bool(L.get("run", {}).get("stacks"))
-    return any(key in f for f in L.get("findings", []))
+    return any(isinstance(f, dict) and key in f for f in L.get("findings", []))
 
 
 def next_command(L):
     """Recomienda el siguiente comando segun el estado del ledger."""
-    findings = L.get("findings", [])
+    findings = [f for f in L.get("findings", []) if isinstance(f, dict)]
     has_sast = any("sast" in f for f in findings)
     has_intel = any("intel" in f for f in findings)
     has_expl = any("exploitability" in f for f in findings)
@@ -51,6 +51,7 @@ def next_command(L):
     has_plan = bool(L.get("plan_ref"))
     has_fix = any("fix" in f for f in findings)
     has_verify = any("verification" in f for f in findings)
+    has_candidate = any(f.get("status") == "candidate-resolved" for f in findings)
     kev = any((f.get("intel") or {}).get("in_cisa_kev") for f in findings)
 
     if not L.get("run", {}).get("stacks"):
@@ -67,6 +68,8 @@ def next_command(L):
         return "/vuln-hunter:fix all", "Aplicar fixes de causa raiz (sin commit)"
     if has_fix and not has_verify:
         return "/vuln-hunter:patch  → luego  /vuln-hunter:verify", "Aprobar diffs (por hash) y verificar el cierre"
+    if has_candidate and not has_verify:
+        return "/vuln-hunter:verify all", "Confirmar candidatos a resuelto (rescan los limpio; falta verificar el cierre)"
     if has_verify:
         return "/vuln-hunter:report", "Generar el informe final de auditoria"
     if kev:
@@ -82,14 +85,14 @@ def main():
     print("│  🛡  vuln-hunter · estado de la auditoria".ljust(W + 1) + "│")
     print("└" + "─" * W + "┘")
 
-    if not L:
-        print("\nAun no hay ledger (.vuln-hunter/ledger.json).")
+    if not isinstance(L, dict) or not L:
+        print("\nAun no hay ledger valido (.vuln-hunter/ledger.json).")
         print("\n▶ Siguiente paso")
         print("  ★ /vuln-hunter:detect      Detectar stacks y empezar")
         return 0
 
-    run = L.get("run", {})
-    findings = L.get("findings", [])
+    run = L.get("run", {}) if isinstance(L.get("run"), dict) else {}
+    findings = [f for f in L.get("findings", []) if isinstance(f, dict)]
     print(f"\nScope    {run.get('scope') or 'repo completo'}   ·   OWASP {run.get('owasp_version','2025')}")
     print(f"Branch   {run.get('branch','—')}   ·   stacks: {', '.join(run.get('stacks', [])) or '—'}")
 

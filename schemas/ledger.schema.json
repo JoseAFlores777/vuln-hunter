@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["schema_version", "run", "findings"],
   "properties": {
-    "schema_version": { "type": "string", "const": "1.0" },
+    "schema_version": { "type": "string", "enum": ["1.0", "1.1", "1.2"], "description": "Version del schema; ledger.py migra siempre a la actual (CURRENT_SCHEMA). Se aceptan versiones previas para validar ledgers historicos antes de migrar." },
     "run": {
       "type": "object",
       "required": ["started_at", "scope"],
@@ -123,8 +123,8 @@
 
           "status": {
             "type": "string",
-            "enum": ["hypothesis", "confirmed", "triaged", "planned", "fixing", "fixed", "closed", "filtered"],
-            "description": "Estado global del finding a lo largo del flujo. 'fixing' = el appsec-fixer empezo a trabajarlo (transitorio, se ve en el panel) y aun no aplica el cambio."
+            "enum": ["hypothesis", "confirmed", "triaged", "planned", "fixing", "candidate-resolved", "fixed", "closed", "filtered"],
+            "description": "Estado global del finding. 'fixing' = el appsec-fixer empezo a trabajarlo. 'candidate-resolved' = desaparecio en un rescan pero AUN SIN verificar (no es evidencia de fix; sigue abierto hasta que verify lo cierre)."
           }
         }
       }

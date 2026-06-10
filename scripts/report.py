@@ -35,7 +35,8 @@ PRIO_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "FILTERED": 9, "—": 5}
 PRIO_COLOR = {"P0": "#b4532f", "P1": "#c0772f", "P2": "#c89a3c", "P3": "#6b7d5c", "FILTERED": "#8a847a", "—": "#8a847a"}
 STATUS_LABEL = {
     "hypothesis": "Hipotesis", "confirmed": "Confirmada", "triaged": "Triada",
-    "planned": "Planificada", "fixing": "En proceso", "fixed": "Corregida",
+    "planned": "Planificada", "fixing": "En proceso",
+    "candidate-resolved": "Candidato a resuelto", "fixed": "Corregida",
     "closed": "Cerrada", "filtered": "Filtrada",
 }
 
@@ -63,6 +64,33 @@ def prio_of(f):
     return (f.get("triage") or {}).get("priority", "—")
 
 
+# --- invariantes de honestidad (CLAUDE.md regla 9) -------------------------
+# Nada se reporta como "cerrado/seguro" por la mera cadena de status: exige
+# evidencia real (verdict CLOSED del verify-engineer) o un triage que lo filtre.
+# Asi un status:"closed" puesto a mano / por inyeccion sin verificacion NO infla
+# los KPIs ni la lista "Que esta seguro".
+def is_truly_closed(f):
+    return (f.get("status") == "closed"
+            and (f.get("verification") or {}).get("verdict") == "CLOSED")
+
+
+def is_filtered(f):
+    tri = f.get("triage") or {}
+    return (f.get("status") == "filtered"
+            and bool(tri.get("rationale") or tri.get("priority") == "FILTERED"))
+
+
+def is_open(f):
+    return not (is_truly_closed(f) or is_filtered(f))
+
+
+def fix_applied_real(f):
+    """Fix aplicado de verdad: applied==true y NO un auto-'fixed' de rescan
+    (desaparecer del escaner no es evidencia de correccion — CLAUDE.md regla 9)."""
+    fix = f.get("fix") or {}
+    return bool(fix.get("applied")) and fix.get("source") != "rescan"
+
+
 def sorted_findings(findings):
     return sorted(findings, key=lambda x: PRIO_ORDER.get(prio_of(x), 5))
 
@@ -70,36 +98,39 @@ def sorted_findings(findings):
 def compute(L):
     findings = L.get("findings", [])
     by_prio, kev, ransom = {}, 0, 0
-    fixed = verified = closed = 0
+    fixed = verified = closed = closed_unverified = 0
     for f in findings:
+        if not isinstance(f, dict):
+            continue
         by_prio[prio_of(f)] = by_prio.get(prio_of(f), 0) + 1
         intel = f.get("intel") or {}
         if intel.get("in_cisa_kev"):
             kev += 1
         if intel.get("known_ransomware_use"):
             ransom += 1
-        if (f.get("fix") or {}).get("applied"):
+        if fix_applied_real(f):
             fixed += 1
         # 'verificado' = el verify-engineer dictamino CLOSED (vocabulario del schema,
         # enum CLOSED/NOT_CLOSED/REGRESSION). Antes se buscaba "pass"/"verified",
         # que NUNCA matcheaba -> el informe decia "ninguno cerrado" por error.
         if (f.get("verification") or {}).get("verdict") == "CLOSED":
             verified += 1
-        # 'cerrado' = estado global del ciclo de vida (la verdad de lifecycle).
-        if f.get("status") == "closed":
+        # 'cerrado' = cerrado DE VERDAD: status closed + verdict CLOSED. Un status
+        # closed sin verificacion no cuenta (no se finge seguridad).
+        if is_truly_closed(f):
             closed += 1
+        if f.get("status") == "closed" and not is_truly_closed(f):
+            closed_unverified += 1
     return {"by_prio": by_prio, "kev": kev, "ransom": ransom,
-            "fixed": fixed, "verified": verified, "closed": closed}
+            "fixed": fixed, "verified": verified, "closed": closed,
+            "closed_unverified": closed_unverified}
 
 
 def risk_verdict(L):
     """Veredicto ejecutivo en una linea: (nivel, texto, color). Determinista."""
     findings = L.get("findings", [])
     C = compute(L)
-
-    def is_open(f):
-        return f.get("status") not in ("closed", "filtered")
-    open_f = [f for f in findings if is_open(f)]
+    open_f = [f for f in findings if isinstance(f, dict) and is_open(f)]
     open_p0 = sum(1 for f in open_f if prio_of(f) == "P0")
     open_kev = sum(1 for f in open_f if (f.get("intel") or {}).get("in_cisa_kev"))
     open_p1 = sum(1 for f in open_f if prio_of(f) == "P1")
@@ -161,6 +192,20 @@ def build_md(L, ledger_path):
     if C["kev"]:
         o.append(f"> ⚠️ **Atención:** {C['kev']} dependencia(s) de producción con CVE en **CISA KEV** "
                  "(explotación confirmada in-the-wild). Parchea **antes de desplegar**.\n")
+
+    # Reconcilia el ledger con el gate REAL (.vuln-hunter/deploy-blocked). Si no
+    # coinciden, alguien manipulo uno de los dos: se reporta el desfase en vez de
+    # ocultarlo (el gate y el ledger son dos fuentes de verdad que deben concordar).
+    open_kev = sum(1 for f in findings if isinstance(f, dict) and is_open(f)
+                   and (f.get("intel") or {}).get("in_cisa_kev"))
+    gate_exists = os.path.exists(os.path.join(os.path.dirname(os.path.abspath(ledger_path)), "deploy-blocked"))
+    if open_kev and not gate_exists:
+        o.append(f"> 🚩 **Inconsistencia:** el ledger tiene {open_kev} hallazgo(s) KEV abiertos pero NO existe "
+                 "`.vuln-hunter/deploy-blocked`. El gate de deploy podria estar desactivado. "
+                 "Corre `python3 scripts/deploy-gate.py` para regenerarlo.\n")
+    elif gate_exists and not open_kev:
+        o.append("> 🚩 **Inconsistencia:** existe `.vuln-hunter/deploy-blocked` pero el ledger no tiene KEV "
+                 "abiertos. Revisa si el bloqueo sigue siendo válido (`python3 scripts/deploy-gate.py`).\n")
 
     # 1. Auditoria y diagnostico
     o.append("---\n\n## 1. Auditoría y diagnóstico\n")
@@ -296,13 +341,18 @@ def build_md(L, ledger_path):
         o.append("_Sin verificación registrada (pendiente de `/vuln-hunter:verify`)._\n")
 
     o.append("### 3.3 Qué está seguro\n")
-    safe = [f for f in findings if f.get("status") in ("closed", "filtered")]
+    # Solo lo cerrado CON evidencia (verdict CLOSED) o filtrado con justificacion.
+    # Un status:closed sin verificacion NO se lista como seguro.
+    safe = [f for f in findings if isinstance(f, dict) and (is_truly_closed(f) or is_filtered(f))]
     if safe:
         for f in safe:
             why = (f.get("triage") or {}).get("rationale") or (f.get("verification") or {}).get("verdict") or STATUS_LABEL.get(f.get("status"), f.get("status"))
             o.append(f"- `{f.get('id','?')}` {f.get('title','')} — {mdc(why)}")
     else:
-        o.append("- (sin elementos cerrados/filtrados todavía)")
+        o.append("- (sin elementos verificados como cerrados/filtrados todavía)")
+    if C.get("closed_unverified"):
+        o.append(f"- ⚠️ {C['closed_unverified']} con `status: closed` pero **sin** veredicto "
+                 "`CLOSED` del verify-engineer: NO se cuentan como cerrados (falta evidencia).")
     o.append("")
 
     o.append("### 3.4 Estado final\n")
@@ -638,7 +688,7 @@ def md_to_html_blocks(md_text):
                 indent = len(lines[i]) - len(lines[i].lstrip())
                 items.append((indent, inline(lines[i].lstrip()[2:])))
                 i += 1
-            html_items = "".join(f'<li style="margin-left:{(ind-base_indent)}px">{txt}</li>' for ind, txt in items)
+            html_items = "".join(f'<li style="margin-left:{max(0, min(ind-base_indent, 64))}px">{txt}</li>' for ind, txt in items)
             out.append(f"<ul>{html_items}</ul>"); continue
         out.append(f"<p>{inline(ln)}</p>"); i += 1
     return "\n".join(out)
@@ -784,7 +834,10 @@ def try_pdf(html_path, pdf_path):
 
     if shutil.which("weasyprint") and _run(["weasyprint", apath, ppath]):
         return "weasyprint"
-    if shutil.which("wkhtmltopdf") and _run(["wkhtmltopdf", "--quiet", "--enable-local-file-access", apath, ppath]):
+    # El informe es self-contained (SVG inline, sin recursos externos), asi que NO
+    # se habilita --enable-local-file-access: contenido derivado del ledger no debe
+    # poder cargar archivos locales al renderizar.
+    if shutil.which("wkhtmltopdf") and _run(["wkhtmltopdf", "--quiet", apath, ppath]):
         return "wkhtmltopdf"
     chrome = _find_chrome()
     if chrome:

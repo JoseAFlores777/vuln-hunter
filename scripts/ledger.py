@@ -21,6 +21,26 @@ Uso CLI:
 import json
 import os
 import sys
+import tempfile
+
+
+def atomic_write_json(path, data):
+    """Escribe JSON de forma atomica (tmp + os.replace) en el mismo directorio.
+    Rompe cualquier symlink en el destino y evita ledgers corruptos a medias si
+    varios agentes reescriben. Nombre temporal unico para no pisar a otro escritor."""
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".ledger.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 CURRENT_SCHEMA = "1.2"
 DEFAULT_STATUS = "hypothesis"
@@ -28,37 +48,45 @@ DEFAULT_STATUS = "hypothesis"
 OPEN_STATUSES = {None, "hypothesis", "confirmed", "triaged", "planned", "fixing"}
 
 # Orden canonico de etapas (coincide con activity.py y el panel).
+def _has(L, key):
+    return any(isinstance(f, dict) and key in f for f in L.get("findings", []))
+
+
 STAGE_DONE = [
     ("detect",   lambda L: bool(L.get("run", {}).get("stacks"))),
     ("RECON",    lambda L: bool(L.get("attack_surface"))),
-    ("SAST",     lambda L: any("sast" in f for f in L.get("findings", []))),
-    ("INTEL",    lambda L: any("intel" in f for f in L.get("findings", []))),
-    ("RED-TEAM", lambda L: any("exploitability" in f for f in L.get("findings", []))),
-    ("TRIAGE",   lambda L: any("triage" in f for f in L.get("findings", []))),
+    ("SAST",     lambda L: _has(L, "sast")),
+    ("INTEL",    lambda L: _has(L, "intel")),
+    ("RED-TEAM", lambda L: _has(L, "exploitability")),
+    ("TRIAGE",   lambda L: _has(L, "triage")),
     ("plan",     lambda L: bool(L.get("plan_ref"))),
-    ("FIX",      lambda L: any("fix" in f for f in L.get("findings", []))),
-    ("VERIFY",   lambda L: any("verification" in f for f in L.get("findings", []))),
+    ("FIX",      lambda L: _has(L, "fix")),
+    ("VERIFY",   lambda L: _has(L, "verification")),
 ]
 
 
 def migrate(ledger):
-    """Sube el ledger al schema actual sin perder datos. Idempotente."""
+    """Sube el ledger al schema actual sin perder datos. Idempotente.
+    PURGA entradas de findings que no sean objetos (un ledger envenenado con
+    strings/numeros en `findings` haria crashear a todos los consumidores)."""
     if not isinstance(ledger, dict):
         ledger = {}
     if not isinstance(ledger.get("run"), dict):
         ledger["run"] = {}
-    if not isinstance(ledger.get("findings"), list):
-        ledger["findings"] = []
-    for f in ledger["findings"]:
-        if isinstance(f, dict):
-            f.setdefault("status", DEFAULT_STATUS)
+    findings = ledger.get("findings")
+    if not isinstance(findings, list):
+        findings = []
+    clean = [f for f in findings if isinstance(f, dict)]
+    for f in clean:
+        f.setdefault("status", DEFAULT_STATUS)
+    ledger["findings"] = clean
     ledger["schema_version"] = CURRENT_SCHEMA
     return ledger
 
 
 def resume_point(ledger):
     """Devuelve etapas completas y el siguiente comando de la cadena."""
-    findings = ledger.get("findings", [])
+    findings = [f for f in ledger.get("findings", []) if isinstance(f, dict)]
     completed = [name for name, done in STAGE_DONE if done(ledger)]
 
     def is_open(f):
@@ -68,7 +96,12 @@ def resume_point(ledger):
         nxt = "/vuln-hunter:scan"
     elif any(f.get("source") == "sast" and "exploitability" not in f and is_open(f) for f in findings):
         nxt = "/vuln-hunter:redteam all"
-    elif any("exploitability" in f and "triage" not in f for f in findings):
+    # 'candidate-resolved' (desaparecio en rescan) sigue ABIERTO: lo confirma verify.
+    elif any(f.get("status") == "candidate-resolved" for f in findings):
+        nxt = "/vuln-hunter:verify all"
+    # Cualquier hallazgo ABIERTO sin triage (incluye SCA/intel, que no pasa por
+    # red-team) debe ir a triage antes que a fix.
+    elif any(is_open(f) and "triage" not in f for f in findings):
         nxt = "/vuln-hunter:triage"
     elif any(f.get("status") in OPEN_STATUSES for f in findings):
         nxt = "/vuln-hunter:fix all"
@@ -92,6 +125,8 @@ def findings_under(ledger, path):
     p = (path or "").rstrip("/")
     out = []
     for f in ledger.get("findings", []):
+        if not isinstance(f, dict):
+            continue
         loc = (f.get("location") or "")
         locpath = loc.split(":", 1)[0]
         if locpath == p or locpath.startswith(p + "/"):
@@ -115,9 +150,7 @@ def main(argv):
     ledger = migrate(_load(path))
 
     if cmd == "migrate":
-        with open(path, "w") as fh:
-            json.dump(ledger, fh, ensure_ascii=False, indent=2)
-            fh.write("\n")
+        atomic_write_json(path, ledger)
         print(f"vuln-hunter ledger: migrado a schema {CURRENT_SCHEMA} ({len(ledger['findings'])} findings)")
         return 0
     if cmd == "resume":
