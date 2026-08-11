@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-YFoxLiDJcKh5sLJWXhHJwrJeyJHv6B641sixdjJUQUY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-Q7fYP8LKgre3G7kUNlMOw3YAj/hmk0+08qoPM7gmnfA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="color-scheme" content="dark" />
 <title>vuln-hunter // panel vivo</title>
@@ -151,16 +151,27 @@
   .lbadge.active{color:var(--cyan);border-color:var(--cyan);background:rgba(34,211,238,.1)}
   .lbadge.active::before{animation:pulse 1.1s infinite}
 
-  /* findings table */
+  /* findings table: table-layout:fixed + colgroup (ver app.jsx) reparte el
+     ancho por columna en PORCENTAJES, asi las columnas se adaptan al ancho
+     disponible sin scroll horizontal (regla del proyecto: cero sliders
+     horizontales). Cada celda de fila (tr.frow>td) es de una sola linea
+     (white-space:nowrap) con elipsis si no entra -> nunca se corta con un
+     salto de linea a mitad de palabra, y el texto completo queda disponible
+     por title= (tooltip nativo) y al expandir la fila. La fila de detalle
+     (.detail, colSpan=8) NO hereda esto: ahi el texto sigue envolviendo
+     normal, porque es prosa larga (hipotesis, rationale, etc.), no un valor
+     tabular corto. */
   .tablecard{overflow:hidden}
-  table{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
   th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-mute)}
+  th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   tr.frow{cursor:pointer}
   tr.frow:hover{background:rgba(34,211,238,.04)}
   tr.frow.arreglados{background:rgba(34,197,94,.035)}
   tr.frow.arreglados:hover{background:rgba(34,197,94,.07)}
-  td{color:var(--ink-soft);overflow-wrap:anywhere}
+  td{color:var(--ink-soft)}
+  tr.frow>td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  tr.frow>td.csel{overflow:visible}
   code{font-family:var(--mono);background:rgba(34,211,238,.08);color:var(--cyan-soft);padding:1px 5px;border-radius:4px;font-size:.86em;overflow-wrap:anywhere;word-break:break-word}
   .pill{font-family:var(--mono);display:inline-block;padding:1px 8px;border-radius:5px;font-size:11px;border:1px solid var(--line-2);color:var(--ink-mute)}
   @keyframes rowin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -219,7 +230,7 @@
   .csel input{accent-color:var(--cyan);cursor:pointer;width:15px;height:15px}
   tr.frow.sel{background:rgba(34,211,238,.07)}
   tr.frow.active{background:rgba(34,211,238,.06);box-shadow:inset 3px 0 0 var(--cyan)}
-  .fixed-what{font-size:11.5px;color:var(--green-soft);margin-top:3px;overflow-wrap:anywhere}
+  .fixed-what{font-size:11.5px;color:var(--green-soft);margin-top:3px;white-space:normal;overflow-wrap:anywhere}
   .copybtn{font-family:var(--mono);background:rgba(255,255,255,.03);border:1px solid var(--line-2);color:var(--ink-mute);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:13px;transition:color .2s,border-color .2s,box-shadow .2s}
   .copybtn:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow-cyan)}
   .copybtn.ok{color:var(--green);border-color:var(--green)}
@@ -1273,7 +1284,39 @@ function FindingsTable({
   }), /*#__PURE__*/React.createElement("button", {
     className: "selclear",
     onClick: () => setSel(new Set())
-  }, "limpiar"))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+  }, "limpiar"))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: 36
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "9%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "6%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "37%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "15%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "12%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "12%"
+    }
+  }), /*#__PURE__*/React.createElement("col", {
+    style: {
+      width: "9%"
+    }
+  })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "csel"
   }), /*#__PURE__*/React.createElement("th", null, "ID"), /*#__PURE__*/React.createElement("th", null, /*#__PURE__*/React.createElement(Gloss, {
     term: "SEV"
@@ -1290,6 +1333,7 @@ function FindingsTable({
     const isOpen = !!open[f.id];
     const life = lifecycleOf(f.status);
     const checked = sel.has(f.id);
+    const owc = (f.owasp_2025 || f.owasp_2021 || "—") + (f.cwe ? " · " + f.cwe : "");
     return /*#__PURE__*/React.createElement(Fragment, {
       key: f.id
     }, /*#__PURE__*/React.createElement("tr", {
@@ -1307,9 +1351,13 @@ function FindingsTable({
       onChange: () => {},
       onClick: e => toggleSel(f.id, e),
       "aria-label": "seleccionar " + f.id
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("code", null, f.id)), /*#__PURE__*/React.createElement("td", null, p !== "—" ? /*#__PURE__*/React.createElement(SevChip, {
+    })), /*#__PURE__*/React.createElement("td", {
+      title: f.id
+    }, /*#__PURE__*/React.createElement("code", null, f.id)), /*#__PURE__*/React.createElement("td", null, p !== "—" ? /*#__PURE__*/React.createElement(SevChip, {
       p: p
-    }) : "—"), /*#__PURE__*/React.createElement("td", null, f.title, " ", intel.in_cisa_kev && /*#__PURE__*/React.createElement("span", {
+    }) : "—"), /*#__PURE__*/React.createElement("td", {
+      title: f.title
+    }, f.title, " ", intel.in_cisa_kev && /*#__PURE__*/React.createElement("span", {
       className: "tag",
       style: {
         background: "var(--amber)"
@@ -1323,12 +1371,15 @@ function FindingsTable({
       }
     }, "RANSOMWARE"), bucket === "arreglados" && (f.fix || f.verification) && /*#__PURE__*/React.createElement("div", {
       className: "fixed-what"
-    }, "\u2713 ", (f.fix || {}).summary || (f.fix || {}).root_cause || "corregido", (f.verification || {}).evidence ? " · " + f.verification.evidence : "")), /*#__PURE__*/React.createElement("td", null, f.owasp_2025 || f.owasp_2021 || "—", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    }, "\u2713 ", (f.fix || {}).summary || (f.fix || {}).root_cause || "corregido", (f.verification || {}).evidence ? " · " + f.verification.evidence : "")), /*#__PURE__*/React.createElement("td", {
+      title: owc
+    }, f.owasp_2025 || f.owasp_2021 || "—", f.cwe && /*#__PURE__*/React.createElement("span", {
       style: {
-        color: "var(--ink-mute)",
-        fontSize: 12
+        color: "var(--ink-mute)"
       }
-    }, f.cwe || "")), /*#__PURE__*/React.createElement("td", null, (f.exploitability || {}).verdict || "—"), /*#__PURE__*/React.createElement("td", null, f.status === "fixing" ? /*#__PURE__*/React.createElement("span", {
+    }, " \xB7 ", f.cwe)), /*#__PURE__*/React.createElement("td", {
+      title: (f.exploitability || {}).verdict || "—"
+    }, (f.exploitability || {}).verdict || "—"), /*#__PURE__*/React.createElement("td", null, f.status === "fixing" ? /*#__PURE__*/React.createElement("span", {
       className: "lbadge active"
     }, "En proceso") : /*#__PURE__*/React.createElement("span", {
       className: "lbadge " + life

@@ -219,17 +219,19 @@ def build_md(L, ledger_path):
 
     o.append("### 1.2 Hallazgos\n")
     if findings:
-        o.append("| ID | Prio | Título | Ubicación | OWASP / CWE | Explotable | EPSS | Estado |")
-        o.append("|---|---|---|---|---|---|---|---|")
+        o.append("| ID | Prio | CVSS | Título | Ubicación | OWASP / CWE | Explotable | EPSS | Estado |")
+        o.append("|---|---|---|---|---|---|---|---|---|")
         for f in sorted_findings(findings):
             intel = f.get("intel") or {}
             expl = f.get("exploitability") or {}
+            tri = f.get("triage") or {}
             ver = f.get("verification") or {}
             badges = ("KEV " if intel.get("in_cisa_kev") else "") + ("RANSOMWARE" if intel.get("known_ransomware_use") else "")
             owc = f"{f.get('owasp_2025') or f.get('owasp_2021') or '—'} / {f.get('cwe') or '—'}"
             est = f"{STATUS_LABEL.get(f.get('status'), f.get('status','—'))} / {ver.get('verdict','—')}"
             epss = intel.get("epss") if intel.get("epss") is not None else "—"
-            o.append(f"| `{mdc(f.get('id'))}` | {mdc(prio_of(f))} | {mdc((f.get('title') or '—') + (' ['+badges.strip()+']' if badges.strip() else ''))} "
+            cvss = f"{tri.get('cvss')} v{tri.get('cvss_version')}" if tri.get("cvss") is not None else "—"
+            o.append(f"| `{mdc(f.get('id'))}` | {mdc(prio_of(f))} | {mdc(cvss)} | {mdc((f.get('title') or '—') + (' ['+badges.strip()+']' if badges.strip() else ''))} "
                      f"| `{mdc(f.get('location'))}` | {mdc(owc)} | {mdc(expl.get('verdict','—'))} | {mdc(epss)} | {mdc(est)} |")
         o.append("")
     else:
@@ -258,21 +260,31 @@ def build_md(L, ledger_path):
                 o.append(f"  - Hipótesis: {mdc(sast.get('hypothesis'))}")
             if sast.get("flow"):
                 o.append(f"  - Data-flow: {mdc(joinlist(sast.get('flow'), ' → '))}")
+            if sast.get("sarif_ref"):
+                o.append(f"  - Origen SARIF: `{mdc(sast.get('sarif_ref'))}` (trazabilidad exacta a la corrida del escáner)")
         if intel:
             o.append(f"- **Dependencia:** {mdc(intel.get('package','—'))}@{mdc(intel.get('installed_version','—'))} "
                      f"({mdc(intel.get('ecosystem','—'))}, prod={mdc(intel.get('is_production_dep'))})")
             if intel.get("cve_ids") or intel.get("ghsa_ids"):
                 o.append(f"  - CVE/GHSA: {mdc(joinlist(intel.get('cve_ids')) + ('  ' + joinlist(intel.get('ghsa_ids')) if intel.get('ghsa_ids') else ''))}")
             o.append(f"  - EPSS: {mdc(intel.get('epss','—'))} · fix: {mdc(intel.get('fixed_version','—'))}")
+            if intel.get("sources_consulted"):
+                o.append(f"  - Fuentes consultadas: {mdc(joinlist(intel.get('sources_consulted')))}")
         if expl:
             o.append(f"- **Explotabilidad:** {mdc(expl.get('verdict','—'))} "
                      f"(reachable={mdc(expl.get('reachable'))}, controllable={mdc(expl.get('controllable'))})")
+            if expl.get("conditions"):
+                o.append(f"  - Condiciones para explotar: {mdc(expl.get('conditions'))}")
             if expl.get("conceptual_chain"):
                 o.append(f"  - Cadena conceptual: {mdc(joinlist(expl.get('conceptual_chain'), ' → '))}")
+            if expl.get("confidence_adjusted") is not None:
+                o.append(f"  - Confianza ajustada por red-team: {mdc(expl.get('confidence_adjusted'))} (vs. confianza SAST original {mdc(sast.get('confidence','—'))})")
         if tri:
             o.append(f"- **Triage:** CVSS {mdc(tri.get('cvss','—'))} ({mdc(tri.get('cvss_version','—'))}) · prioridad {mdc(tri.get('priority','—'))}")
             if tri.get("rationale"):
                 o.append(f"  - {mdc(tri.get('rationale'))}")
+            if tri.get("dedup_of"):
+                o.append(f"  - Duplicado de: `{mdc(tri.get('dedup_of'))}` (no se cuenta dos veces en los totales)")
         o.append("")
 
     # 2. Estrategia y plan

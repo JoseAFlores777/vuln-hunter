@@ -444,6 +444,16 @@ function FindingsTable({findings,bucket}){
         </div>
       )}
       <table>
+        <colgroup>
+          <col style={{width:36}}/>
+          <col style={{width:"9%"}}/>
+          <col style={{width:"6%"}}/>
+          <col style={{width:"37%"}}/>
+          <col style={{width:"15%"}}/>
+          <col style={{width:"12%"}}/>
+          <col style={{width:"12%"}}/>
+          <col style={{width:"9%"}}/>
+        </colgroup>
         <thead><tr><th className="csel"></th><th>ID</th><th><Gloss term="SEV">Sev</Gloss></th><th>Titulo</th><th><Gloss term="OWASP">OWASP</Gloss> / <Gloss term="CWE">CWE</Gloss></th><th>Explotable</th><th>Estado</th><th>Acción</th></tr></thead>
         <tbody className="swap" key={bucket}>
           {sorted.map(f=>{
@@ -452,17 +462,18 @@ function FindingsTable({findings,bucket}){
             const isOpen = !!open[f.id];
             const life = lifecycleOf(f.status);
             const checked = sel.has(f.id);
+            const owc = (f.owasp_2025||f.owasp_2021||"—") + (f.cwe?" · "+f.cwe:"");
             return (
               <Fragment key={f.id}>
                 <tr className={"frow "+life+(checked?" sel":"")+(f.status==="fixing"?" active":"")} onClick={()=>setOpen(o=>({...o,[f.id]:!o[f.id]}))}>
                   <td className="csel" onClick={(e)=>e.stopPropagation()}><input type="checkbox" checked={checked} onChange={()=>{}} onClick={(e)=>toggleSel(f.id,e)} aria-label={"seleccionar "+f.id}/></td>
-                  <td><code>{f.id}</code></td>
+                  <td title={f.id}><code>{f.id}</code></td>
                   <td>{p!=="—" ? <SevChip p={p}/> : "—"}</td>
-                  <td>{f.title} {intel.in_cisa_kev && <span className="tag" style={{background:"var(--amber)"}}><Gloss term="KEV">KEV</Gloss></span>} {intel.known_ransomware_use && <span className="tag" style={{background:"var(--red)"}}>RANSOMWARE</span>}
+                  <td title={f.title}>{f.title} {intel.in_cisa_kev && <span className="tag" style={{background:"var(--amber)"}}><Gloss term="KEV">KEV</Gloss></span>} {intel.known_ransomware_use && <span className="tag" style={{background:"var(--red)"}}>RANSOMWARE</span>}
                     {bucket==="arreglados" && (f.fix||f.verification) && <div className="fixed-what">✓ {(f.fix||{}).summary||(f.fix||{}).root_cause||"corregido"}{(f.verification||{}).evidence?" · "+f.verification.evidence:""}</div>}
                   </td>
-                  <td>{f.owasp_2025||f.owasp_2021||"—"}<br/><span style={{color:"var(--ink-mute)",fontSize:12}}>{f.cwe||""}</span></td>
-                  <td>{(f.exploitability||{}).verdict||"—"}</td>
+                  <td title={owc}>{f.owasp_2025||f.owasp_2021||"—"}{f.cwe && <span style={{color:"var(--ink-mute)"}}> · {f.cwe}</span>}</td>
+                  <td title={(f.exploitability||{}).verdict||"—"}>{(f.exploitability||{}).verdict||"—"}</td>
                   <td>{f.status==="fixing" ? <span className="lbadge active">En proceso</span> : <span className={"lbadge "+life}>{LIFE_LABEL[life]}</span>}</td>
                   <td onClick={(e)=>e.stopPropagation()}><CopyBtn cmd={recCommand(f)}/></td>
                 </tr>
