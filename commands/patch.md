@@ -7,15 +7,17 @@ model: opus
 
 # Patch con aprobacion humana (por hash del diff)
 
-## Salvaguarda (impuesta por hook)
-El hook PreToolUse bloquea cualquier `git commit`/`git push` salvo que: (1) la
-branch empiece por `vuln-hunter/`, (2) exista `.vuln-hunter/APPROVED` y (3) su
-contenido sea el hash SHA-256 del INDICE STAGED (`git diff --cached HEAD`) ACTUAL.
-La aprobacion se ata a lo que REALMENTE se commitea (el indice staged), no al
-working tree: si stageas/desestageas algo despues de aprobar, el commit se vuelve
-a bloquear. El hook ademas RECHAZA `git commit -a/--all/--patch`, pathspecs en el
-commit, y commits con `-C`/`--git-dir`/`--work-tree` (todos re-stagean o redirigen
-el repo y romperian la atadura al indice aprobado). NUNCA se hace auto-merge.
+## Salvaguarda (advertencia del hook, OPCIONAL — no bloquea)
+El hook PreToolUse revisa cualquier `git commit`/`git push` contra: (1) la branch
+empieza por `vuln-hunter/`, (2) existe `.vuln-hunter/APPROVED` y (3) su contenido
+es el hash SHA-256 del INDICE STAGED (`git diff --cached HEAD`) ACTUAL. Si algo no
+cumple, el hook imprime una ADVERTENCIA por stderr pero deja pasar el commit
+igual — no bloquea. La atadura al indice staged (no al working tree), la deteccion
+de `git commit -a/--all/--patch`, pathspecs, y `-C`/`--git-dir`/`--work-tree`
+siguen funcionando, solo que ahora informan en vez de impedir. NUNCA se hace
+auto-merge automatizado por este comando (Claude no ejecuta `approve-diff.py` ni
+se salta el paso de pedirle aprobacion al usuario), pero el hook ya no es la
+barrera que lo garantiza.
 
 ## Flujo
 1. Stagea EXACTAMENTE los archivos del fix: `git add <archivos del VULN>`. No uses
@@ -31,8 +33,8 @@ el repo y romperian la atadura al indice aprobado). NUNCA se hace auto-merge.
    Claude, NO ejecutas este script: es el gesto de consentimiento humano.)
 5. Solo despues de que el usuario lo haya aprobado, commitea en la branch
    `vuln-hunter/*` con un mensaje claro por VULN, SIN `-a` y sin re-stagear. Si
-   stageas algo entre la aprobacion y el commit, el hook bloqueara: pide
-   re-aprobacion.
+   stageas algo entre la aprobacion y el commit, el hook solo ADVIERTE (no
+   bloquea); igual pide re-aprobacion para mantener la disciplina del flujo.
 5. Recomienda abrir un Pull Request para revision; no mergees tu.
 6. Tras commitear, revoca la aprobacion para que el siguiente patch requiera una
    nueva:

@@ -9,18 +9,21 @@ es el allowlist de `tools:` por agente y la aprobacion HUMANA del diff. Este hoo
 es DEFENSA EN PROFUNDIDAD; aqui priorizamos fallar-cerrado y cubrir los bypass
 obvios, no la cobertura total.
 
-1) APROBACION DEL PATCHER POR HASH DEL INDICE STAGED. Bloquea `git commit` /
-   `git push` (y otros subcomandos que producen commits) salvo que se cumplan
-   TODAS estas condiciones:
+1) APROBACION DEL PATCHER POR HASH DEL INDICE STAGED — ADVERTENCIA, NO BLOQUEA.
+   Este gate es OPCIONAL: revisa `git commit` / `git push` (y otros subcomandos
+   que producen commits) contra estas condiciones:
      a. la branch actual empieza por "vuln-hunter/"
      b. existe el archivo de aprobacion ".vuln-hunter/APPROVED"
      c. su contenido == hash SHA-256 de `git diff --cached HEAD` ACTUAL (el INDICE
         staged, que es lo que REALMENTE se commitea — no el working tree).
+   Si alguna falla, el hook imprime una ADVERTENCIA a stderr pero deja pasar el
+   commit (exit 0): no es una barrera automatica, es un recordatorio. La revision
+   humana del diff queda como honor system, no como gate impuesto por el hook.
    El parser de git tokeniza el comando (shlex) en vez de regexear la posicion del
    subcomando, asi `git -C dir commit`, `git -c k=v commit`, `commit-tree`, y los
-   comandos compuestos no esquivan el gate. Se BLOQUEA tambien:
-     - cualquier commit/push con redireccion de repo (`-C`/`--git-dir`/`--work-tree`)
-       en vez de intentar seguirla (seguir el redirect es a su vez superficie de bypass).
+   comandos compuestos se detectan igual para la advertencia. Se ADVIERTE tambien
+   sobre:
+     - cualquier commit/push con redireccion de repo (`-C`/`--git-dir`/`--work-tree`).
      - `git commit -a/--all/--patch` y pathspecs, que re-stagean en el momento del
        commit y por tanto divergen del indice aprobado.
 
@@ -34,6 +37,8 @@ obvios, no la cobertura total.
 
 Contrato: exit code 2 = BLOQUEA (unico codigo que deniega de forma fiable). 0 = permite.
 Entrada ilegible -> se DENIEGA (fail-closed), porque es un hook de seguridad.
+La seccion 1 (aprobacion del patcher) es la UNICA excepcion: nunca devuelve 2,
+solo advierte por stderr y deja pasar (ver arriba).
 """
 import hashlib
 import json
@@ -253,6 +258,58 @@ def deny(msg):
     return 2
 
 
+def warn(msg):
+    print("ADVERTENCIA vuln-hunter (no bloqueante, gate de aprobacion es "
+          "opcional): " + msg, file=sys.stderr)
+
+
+def check_approval_gate(cmd):
+    """Devuelve None si el commit cumple el gate, o un mensaje de advertencia si
+    no. NUNCA bloquea (ver docstring del modulo, seccion 1): esta funcion solo
+    informa, `main()` decide imprimir el aviso y siempre deja pasar."""
+    invs = git_invocations(cmd)
+    parsed = [(s, r, a) for (s, r, a) in (invs or []) if s in COMMIT_SUBCMDS]
+    raw_commit = bool(RAW_COMMIT_RE.search(cmd))
+    commit_like = bool(parsed) or raw_commit
+    if not commit_like:
+        return None
+
+    for sub, redirected, args in parsed:
+        if redirected:
+            return ("commit/push redirige el repo con -C/--git-dir/--work-tree, "
+                     "lo que rompe la atadura al indice aprobado.")
+        if sub == "commit" and commit_restages_index(args):
+            return ("`git commit` con -a/--all/--patch o pathspecs re-stagea en "
+                     "el momento del commit y diverge del indice que se aprobo.")
+
+    if not parsed and (RAW_RESTAGE_RE.search(cmd) or RAW_REDIRECT_RE.search(cmd)):
+        return ("commit encapsulado (bash -c/eval/...) con -a/--all/--patch o "
+                 "redireccion de repo; no se pudo verificar la aprobacion.")
+
+    branch = current_branch()
+    if not branch.startswith(BRANCH_PREFIX):
+        return (f"el patcher normalmente commitea en una branch "
+                 f"'{BRANCH_PREFIX}*'. Branch actual: '{branch or '(desconocida)'}'.")
+
+    if not os.path.exists(APPROVAL_FILE):
+        return ("falta la aprobacion humana. Si quieres el gesto de consentimiento, "
+                 "stagea el fix, revisa el diff, y corre:\n"
+                 "  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/approve-diff.py")
+
+    try:
+        with open(APPROVAL_FILE) as fh:
+            approved_hash = fh.read().strip()
+    except Exception:
+        approved_hash = ""
+    actual_hash = staged_diff_hash()
+    if approved_hash != actual_hash:
+        return ("la aprobacion no corresponde al indice staged actual (cambio "
+                 "despues de aprobar).\n"
+                 f"  aprobado: {approved_hash[:12]}...  actual: {actual_hash[:12]}...")
+
+    return None
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -289,70 +346,10 @@ def main() -> int:
             "\nParchea y vuelve a correr /vuln-hunter:watch --gate antes de desplegar."
         )
 
-    # --- 1: aprobacion del patcher por hash del indice staged ---
-    # Doble deteccion: (a) tokenizer para commits LIMPIOS (preciso, ve flags/args);
-    # (b) escaneo RAW para commits ENCAPSULADOS u ofuscados (bash -c "git commit",
-    # eval, $(echo git) commit, g=git; $g commit, git$IFS commit) que el tokenizer
-    # no ve. Ambos llevan al mismo gate de branch+aprobacion: el bypass por wrapper
-    # queda cerrado porque un commit sin APPROVED se bloquea aunque venga encapsulado.
-    invs = git_invocations(cmd)
-    parsed = [(s, r, a) for (s, r, a) in (invs or []) if s in COMMIT_SUBCMDS]
-    raw_commit = bool(RAW_COMMIT_RE.search(cmd))
-    commit_like = bool(parsed) or raw_commit
-
-    if commit_like:
-        # rechazos precisos (commit limpio que el tokenizer si parseo)
-        for sub, redirected, args in parsed:
-            if redirected:
-                return deny(
-                    "BLOQUEADO por vuln-hunter: un commit/push no puede redirigir el "
-                    "repo con -C/--git-dir/--work-tree (evade el gate de aprobacion)."
-                )
-            if sub == "commit" and commit_restages_index(args):
-                return deny(
-                    "BLOQUEADO por vuln-hunter: `git commit` con -a/--all/--patch o "
-                    "pathspecs re-stagea en el momento del commit y diverge del indice "
-                    "aprobado. Stagea con `git add` lo exacto, aprueba, y commitea sin "
-                    "esos flags."
-                )
-        # caso encapsulado/ofuscado: no se pudo parsear un git limpio. Si la forma
-        # raw revela re-stage/redirect, bloquea (no se puede verificar la aprobacion).
-        if not parsed and (RAW_RESTAGE_RE.search(cmd) or RAW_REDIRECT_RE.search(cmd)):
-            return deny(
-                "BLOQUEADO por vuln-hunter: commit encapsulado con -a/--all/--patch o "
-                "redireccion de repo; no se puede verificar la aprobacion. Ejecuta "
-                "`git commit` DIRECTO (sin bash -c/eval) para que el gate valide el "
-                "indice aprobado."
-            )
-
-        branch = current_branch()
-        if not branch.startswith(BRANCH_PREFIX):
-            return deny(
-                f"BLOQUEADO por vuln-hunter: el patcher solo commitea en una branch "
-                f"'{BRANCH_PREFIX}*'. Branch actual: '{branch or '(desconocida)'}'."
-            )
-        if not os.path.exists(APPROVAL_FILE):
-            return deny(
-                "BLOQUEADO por vuln-hunter: falta la aprobacion humana. Stagea el fix "
-                "(`git add`), revisa el diff y, si estas de acuerdo, aprueba ESTE indice "
-                "exacto con:\n"
-                "  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/approve-diff.py\n"
-                "(genera .vuln-hunter/APPROVED con el hash del indice staged)."
-            )
-        try:
-            with open(APPROVAL_FILE) as fh:
-                approved_hash = fh.read().strip()
-        except Exception:
-            approved_hash = ""
-        actual_hash = staged_diff_hash()
-        if approved_hash != actual_hash:
-            return deny(
-                "BLOQUEADO por vuln-hunter: la aprobacion no corresponde al indice "
-                "staged actual (cambio despues de aprobar). Re-stagea lo exacto y "
-                "re-aprueba con:\n"
-                "  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/approve-diff.py\n"
-                f"  aprobado: {approved_hash[:12]}...  actual: {actual_hash[:12]}..."
-            )
+    # --- 1: aprobacion del patcher por hash del indice staged (advertencia) ---
+    warning = check_approval_gate(cmd)
+    if warning:
+        warn(warning)
 
     return 0
 

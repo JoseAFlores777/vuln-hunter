@@ -46,14 +46,17 @@ advisories de vendors. Nunca busca ni ejecuta exploits/PoCs. El hook
 `guard-webfetch.py` fuerza este allowlist de hosts sobre las llamadas WebFetch de
 ESTE agente (las del resto de la sesión no se tocan).
 
-## 6. Aprobación humana del patcher (por hash del índice staged)
-`appsec-fixer` aplica cambios en branch `vuln-hunter/*` pero NO commitea. El
-commit solo procede tras aprobación humana del **índice staged** EXACTO: la persona
-stagea (`git add`) lo revisado y corre `scripts/approve-diff.py`, que guarda el hash
-de `git diff --cached HEAD`; si el índice cambia tras aprobar, el hook vuelve a
-bloquear. Nunca hay auto-merge. Honestidad: la barrera PRIMARIA es esa revisión
-humana; el hook `guard-commit-and-exec.py` es defensa en profundidad y, como
-denylist de comandos shell, es best-effort/evadible (no es una garantía absoluta).
+## 6. Aprobación humana del patcher (por hash del índice staged) — OPCIONAL/advisory
+`appsec-fixer` aplica cambios en branch `vuln-hunter/*` pero NO commitea. El flujo
+recomendado: la persona stagea (`git add`) lo revisado y corre
+`scripts/approve-diff.py`, que guarda el hash de `git diff --cached HEAD`. Si el
+índice cambia tras aprobar, o si nunca se aprobó, el hook `guard-commit-and-exec.py`
+**imprime una advertencia por stderr pero NO bloquea el commit** — este gate es
+opcional, no un enforcement automático. La barrera real es la revisión humana del
+diff antes de aprobar/commitear, por decisión explícita del usuario (no hay
+auto-merge automatizado por el kit, pero tampoco hay un gate que lo impida a nivel
+de hook). Honestidad: nunca hubo garantía absoluta aquí — un denylist de comandos
+shell es best-effort/evadible — y ahora tampoco hay bloqueo duro.
 
 ## 7. Gate de despliegue
 Si una dependencia de producción tiene un CVE en CISA KEV (o EPSS alto),

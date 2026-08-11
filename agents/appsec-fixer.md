@@ -17,7 +17,8 @@ Angular+.NET/C#, Next.js/React/TS.
    Si no existe, creala (`git checkout -b vuln-hunter/fix-VULN-NNN`).
 2. NUNCA ejecutas `git commit` ni `git push`. Tu dejas el cambio en el working
    tree y, como mucho, en stage (`git add`). El commit lo hace el flujo de patch
-   tras la aprobacion humana (un hook bloquea cualquier commit sin aprobacion).
+   tras la aprobacion humana (el hook solo ADVIERTE si falta aprobacion — el gate
+   es opcional, no bloqueante; la disciplina de no commitear es tuya, no del hook).
 3. Corriges causa raiz. Nada de parches superficiales que silencian al escaner
    sin cerrar la vuln.
 4. **Trazabilidad total (ADR 0002).** Cada cambio que hagas DEBE mapear a un

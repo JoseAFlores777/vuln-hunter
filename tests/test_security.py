@@ -265,7 +265,8 @@ class TestVersionLockstep(unittest.TestCase):
 
 
 class TestCommitGateIntegration(unittest.TestCase):
-    """Integracion: el hook ata la aprobacion al INDICE staged (no al working tree)."""
+    """Integracion: el gate de aprobacion es advisory (advierte, nunca bloquea);
+    ata la advertencia al INDICE staged (no al working tree)."""
 
     def _hook(self, repo, cmd):
         env = dict(os.environ, CLAUDE_PROJECT_DIR=repo)
@@ -276,13 +277,22 @@ class TestCommitGateIntegration(unittest.TestCase):
         )
         return p.returncode
 
+    def _hook_stderr(self, repo, cmd):
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=repo)
+        payload = json.dumps({"tool_input": {"command": cmd}})
+        p = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "hooks/guard-commit-and-exec.py")],
+            input=payload, capture_output=True, text=True, env=env,
+        )
+        return p.returncode, p.stderr
+
     def _staged_hash(self, repo):
         diff = subprocess.run(["git", "-C", repo, "diff", "--cached", "HEAD"],
                               capture_output=True, text=True).stdout
         import hashlib
         return hashlib.sha256(diff.encode()).hexdigest()
 
-    def test_restaged_content_after_approval_is_blocked(self):
+    def test_restaged_content_after_approval_only_warns(self):
         if not subprocess.run(["git", "--version"], capture_output=True).returncode == 0:
             self.skipTest("git no disponible")
         def write(rel, txt):
@@ -303,13 +313,17 @@ class TestCommitGateIntegration(unittest.TestCase):
             write("a.txt", "fixed\n")
             run("add", "a.txt")
             write(".vuln-hunter/APPROVED", self._staged_hash(repo))
-            self.assertEqual(self._hook(repo, "git commit -m fix"), 0)  # aprobado == staged
+            code, err = self._hook_stderr(repo, "git commit -m fix")
+            self.assertEqual(code, 0)  # aprobado == staged, sin advertencia
+            self.assertEqual(err, "")
             # el atacante re-stagea contenido distinto despues de aprobar
             write("a.txt", "BACKDOOR\n")
             run("add", "a.txt")
-            self.assertEqual(self._hook(repo, "git commit -m fix"), 2)  # bloqueado
+            code, err = self._hook_stderr(repo, "git commit -m fix")
+            self.assertEqual(code, 0)  # advertencia, no bloqueo
+            self.assertIn("ADVERTENCIA", err)
 
-    def test_wrapped_commit_blocked_without_approval(self):
+    def test_wrapped_commit_warns_without_approval(self):
         if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
             self.skipTest("git no disponible")
         with tempfile.TemporaryDirectory() as repo:
@@ -328,7 +342,9 @@ class TestCommitGateIntegration(unittest.TestCase):
             run("add", "a.txt")  # staged, SIN APPROVED
             for cmd in ['bash -c "git commit -m x"', 'eval "git commit -m x"',
                         '$(echo git) commit -m x', 'g=git; $g commit -m x']:
-                self.assertEqual(self._hook(repo, cmd), 2, cmd)  # bypass cerrado
+                code, err = self._hook_stderr(repo, cmd)
+                self.assertEqual(code, 0, cmd)  # nunca bloquea
+                self.assertIn("ADVERTENCIA", err, cmd)
 
 
 if __name__ == "__main__":

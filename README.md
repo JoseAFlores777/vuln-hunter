@@ -124,13 +124,17 @@ Incluye un laboratorio con **9 vulnerabilidades plantadas** y su ground truth en
 Cuenta verdaderos positivos (de 9), falsos negativos y falsos positivos (hay un
 control negativo que NO debe marcarse). Ese número te dice si el plugin sirve.
 
-## Aprobar un patch (gesto humano)
+## Aprobar un patch (gesto humano, OPCIONAL)
 ```bash
 git add <archivos del fix>                       # stagea EXACTO lo revisado
 git diff --cached HEAD                            # revisa el indice staged
 python3 scripts/approve-diff.py                   # aprueba ESE indice (por hash)
 # si re-stageas/editas, la aprobación caduca: re-aprueba
 ```
+Este gate es **advisory, no bloqueante**: si commiteas sin aprobar (o con el
+índice cambiado tras aprobar), `guard-commit-and-exec.py` imprime una advertencia
+por stderr pero deja pasar el commit igual. Úsalo como recordatorio de revisión,
+no como enforcement automático.
 
 ## Salvaguardas (hooks) — defensa en profundidad, NO garantías
 **Honestidad ante todo:** la barrera PRIMARIA es la **revisión humana del diff** y
@@ -139,9 +143,11 @@ y, al inspeccionar cadenas de comandos shell, son **best-effort y evadibles** (u
 comando suficientemente ofuscado puede esquivarlos; además un hook PreToolUse solo
 ve lo que ejecuta Claude, no algo lanzado fuera del plugin). No los trates como
 una garantía absoluta.
-- `guard-commit-and-exec.py` — ata la aprobación al **índice staged** (`git diff
-  --cached HEAD`); cierra los wrappers obvios (`bash -c`, `eval`, `git -C/-c`,
-  `commit -a`), pero su detección de commits es un denylist conservador.
+- `guard-commit-and-exec.py` — el gate de aprobación por **índice staged** (`git
+  diff --cached HEAD`) es **advisory**: detecta wrappers obvios (`bash -c`, `eval`,
+  `git -C/-c`, `commit -a`) y avisa por stderr, pero nunca bloquea el commit. Sí
+  sigue bloqueando (exit 2) la ejecución ofensiva (shells reversos, etc.) y el
+  gate de despliegue con CVE en KEV.
 - `block-exploit-write.py` — bloquea contenido de exploit ejecutable; advierte ante
   nombres sospechosos. Fail-closed ante entrada ilegible.
 - `guard-webfetch.py` — acota WebFetch del `threat-intel-scout` a fuentes oficiales
