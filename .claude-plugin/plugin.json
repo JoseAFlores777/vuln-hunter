@@ -10,7 +10,6 @@
   "homepage": "https://github.com/JoseAFlores777/vuln-hunter",
   "repository": "https://github.com/JoseAFlores777/vuln-hunter",
   "license": "MIT",
-  "hooks": "./hooks/hooks.json",
   "keywords": [
     "security",
     "owasp",
