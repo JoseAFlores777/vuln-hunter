@@ -407,5 +407,129 @@ class TestOwaspChartStackedBySeverity(unittest.TestCase):
         self.assertIn("sin datos", report._svg_bars_owasp([]))
 
 
+class TestPriorityNormalizationRealWorld(unittest.TestCase):
+    """Auditoria real: triage-judge escribio priority="N/A" (no el
+    literal "FILTERED" del schema) para 13/17 hallazgos filtrados. Antes,
+    _svg_donut/_svg_matrix/_svg_bars_owasp iteraban sobre una lista fija de
+    prioridades reconocidas y ese valor no reconocido desaparecia EN SILENCIO:
+    el KPI decia 17 pero la dona decia 4, sin ningun aviso."""
+
+    def _L(self):
+        findings = [{"id": f"VULN-{i:03d}", "status": "filtered",
+                     "triage": {"priority": "N/A", "rationale": "duplicado de otro"}}
+                    for i in range(1, 14)]
+        findings += [{"id": "VULN-014", "status": "triaged", "triage": {"priority": "P1"}},
+                     {"id": "VULN-015", "status": "triaged", "triage": {"priority": "P1"}},
+                     {"id": "VULN-016", "status": "triaged", "triage": {"priority": "P1"}},
+                     {"id": "VULN-017", "status": "triaged", "triage": {"priority": "P2"}}]
+        return {"findings": findings}
+
+    def test_prio_of_normalizes_na_to_filtered(self):
+        f = {"status": "filtered", "triage": {"priority": "N/A", "rationale": "x"}}
+        self.assertEqual(report.prio_of(f), "FILTERED")
+
+    def test_prio_of_leaves_canonical_values_untouched(self):
+        for p in ("P0", "P1", "P2", "P3", "FILTERED"):
+            self.assertEqual(report.prio_of({"triage": {"priority": p}}), p)
+
+    def test_donut_total_matches_all_findings_not_just_recognized_ones(self):
+        L = self._L()
+        C = report.compute(L)
+        donut = report._svg_donut(C["by_prio"])
+        # el numero en el centro de la dona (dn-n) debe ser 17, no 4
+        self.assertIn(">17<", donut)
+        self.assertNotIn(">4<", donut)
+
+    def test_owasp_bars_do_not_drop_filtered_segment(self):
+        findings = self._L()["findings"]
+        for f in findings:
+            f["owasp_2025"] = "A03:2025-Injection"
+        out = report._svg_bars_owasp(findings)
+        # 13 filtrados deben aparecer como un segmento "FILTERED", no desaparecer
+        self.assertIn("FILTERED: 13", out)
+
+    def test_progress_bar_denominator_excludes_filtered(self):
+        L = self._L()
+        html = report.build_charts_html(L, mode="executive", include_header=False)
+        # antes: "Pendientes 17" (total crudo); ahora: solo los 4 reales
+        self.assertIn("Pendientes 4", html)
+        self.assertNotIn("Pendientes 17", html)
+
+
+class TestCvssFieldFallback(unittest.TestCase):
+    """Auditoria real: triage-judge escribio `cvss_score` (no `cvss`, el nombre
+    del schema) para TODOS los hallazgos — el CVSS real (6.3/5.3) nunca se
+    mostraba ni entraba al grafico CVSS×EPSS."""
+
+    def test_cvss_of_prefers_schema_name(self):
+        self.assertEqual(report.cvss_of({"cvss": 7.5, "cvss_score": 9.9}), 7.5)
+
+    def test_cvss_of_falls_back_to_cvss_score(self):
+        self.assertEqual(report.cvss_of({"cvss_score": 6.3}), 6.3)
+
+    def test_cvss_of_none_when_neither_present(self):
+        self.assertIsNone(report.cvss_of({}))
+
+    def test_table_shows_real_cvss_from_cvss_score(self):
+        L = {"findings": [{"id": "VULN-001", "title": "X", "status": "triaged",
+                           "triage": {"priority": "P1", "cvss_score": 6.3, "cvss_version": "3.1"}}]}
+        html = report.build_findings_table_html(L)
+        self.assertIn("6.3", html)
+
+
+class TestExploitabilitySpanishFallback(unittest.TestCase):
+    """Auditoria real: redteam-whitehat escribio el bloque exploitability
+    completo en ESPAÑOL (veredicto/alcanzable/condiciones/cadena/
+    confianza_ajustada) en vez de las claves del schema en ingles. Sin
+    fallback, un hallazgo CONFIRMADO como explotable se mostraba "sin
+    confirmar": subestima el riesgo, la peor direccion de error posible."""
+
+    def _expl_es(self):
+        return {
+            "veredicto": "confirmado",
+            "alcanzable": "condicional",
+            "condiciones": "requiere sesion autenticada",
+            "cadena": "1) paso uno -> 2) paso dos -> 3) paso tres",
+            "confianza_ajustada": 8,
+        }
+
+    def test_normalize_maps_verdict(self):
+        out = report.normalize_exploitability(self._expl_es())
+        self.assertEqual(out["verdict"], "EXPLOITABLE")
+
+    def test_normalize_maps_parcial_to_conditional(self):
+        out = report.normalize_exploitability({"veredicto": "parcial"})
+        self.assertEqual(out["verdict"], "CONDITIONAL")
+
+    def test_normalize_maps_conditions_and_chain_and_confidence(self):
+        out = report.normalize_exploitability(self._expl_es())
+        self.assertEqual(out["conditions"], "requiere sesion autenticada")
+        self.assertEqual(out["conceptual_chain"], ["1) paso uno", "2) paso dos", "3) paso tres"])
+        self.assertEqual(out["confidence_adjusted"], 8)
+
+    def test_normalize_does_not_mutate_original(self):
+        original = self._expl_es()
+        snapshot = dict(original)
+        report.normalize_exploitability(original)
+        self.assertEqual(original, snapshot)
+
+    def test_english_keys_take_priority_if_both_present(self):
+        out = report.normalize_exploitability({"verdict": "CONDITIONAL", "veredicto": "confirmado"})
+        self.assertEqual(out["verdict"], "CONDITIONAL")
+
+    def test_card_shows_exploitable_not_unconfirmed_for_spanish_only_block(self):
+        L = {"findings": [{"id": "VULN-001", "title": "XSS confirmado", "status": "confirmed",
+                           "exploitability": self._expl_es()}]}
+        html = report.build_finding_card_html(L["findings"][0], "technical")
+        self.assertIn("EXPLOITABLE", html)
+        self.assertIn("condicional", html)  # alcanzable en texto crudo, no un ✕ enganoso
+
+    def test_matrix_counts_spanish_only_exploitability(self):
+        findings = [{"id": "VULN-001", "triage": {"priority": "P0"}, "exploitability": self._expl_es()}]
+        matrix = report._svg_matrix(findings)
+        # 1 hallazgo P0 EXPLOITABLE debe caer en la celda "hot" (P0 x EXPLOITABLE), no en "sin confirmar"
+        self.assertIn('class="mx hot"', matrix)
+
+
 if __name__ == "__main__":
     unittest.main()

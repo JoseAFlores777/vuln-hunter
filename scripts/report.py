@@ -89,7 +89,20 @@ def joinlist(v, sep=", "):
 
 
 def prio_of(f):
-    return (f.get("triage") or {}).get("priority", "—")
+    """Prioridad para mostrar y para agrupar en graficos. Normaliza valores NO
+    canonicos (fuera de P0-P3/FILTERED) en vez de dejarlos pasar tal cual: un
+    triage-judge real puede escribir "N/A" (u otro string) para lo filtrado en
+    vez del literal "FILTERED" del schema — visto en una auditoria real, donde
+    esto hacia desaparecer 13/17 hallazgos EN SILENCIO de la dona/matriz/barras
+    OWASP (cada una itera sobre una lista fija de prioridades reconocidas: un
+    valor no reconocido simplemente no aparecia en ningun lado, sin aviso).
+    is_filtered() ya sabe reconocer un filtrado real por status+rationale, asi
+    que lo reusamos en vez de negociar el string exacto de priority."""
+    tri = f.get("triage") or {}
+    p = tri.get("priority")
+    if p in ("P0", "P1", "P2", "P3", "FILTERED"):
+        return p
+    return "FILTERED" if is_filtered(f) else "—"
 
 
 # --- invariantes de honestidad (CLAUDE.md regla 9) -------------------------
@@ -112,6 +125,51 @@ def is_open(f):
     return not (is_truly_closed(f) or is_filtered(f))
 
 
+def cvss_of(tri):
+    """El schema declara el campo `cvss`, pero en produccion triage-judge a
+    veces escribe `cvss_score` en su lugar (visto en una auditoria real: TODOS
+    los hallazgos de esa corrida tenian cvss_score con dato real y cvss=None,
+    asi que el CVSS real nunca se mostraba ni entraba al grafico CVSS×EPSS).
+    Acepta ambos nombres sin mutar `tri`; prefiere el nombre del schema si por
+    algun motivo ambos estan presentes."""
+    v = tri.get("cvss")
+    return v if v is not None else tri.get("cvss_score")
+
+
+_VEREDICTO_MAP = {"confirmado": "EXPLOITABLE", "parcial": "CONDITIONAL",
+                   "refutado": "NOT_EXPLOITABLE", "no explotable": "NOT_EXPLOITABLE"}
+
+
+def normalize_exploitability(expl):
+    """El schema de exploitability (lo escribe redteam-whitehat) declara claves
+    en ingles: verdict/reachable/controllable/conditions/conceptual_chain/
+    confidence_adjusted. En produccion se vio un redteam-whitehat escribiendo el
+    equivalente en ESPAÑOL (veredicto/alcanzable/condiciones/cadena/
+    confianza_ajustada) para TODOS los hallazgos de una auditoria real — sin
+    este fallback, hallazgos que el red-team CONFIRMO como explotables se
+    mostraban como "sin confirmar" en el informe: subestima el riesgo, la
+    direccion de error mas costosa posible en un informe de seguridad (peor que
+    sobre-reportar). No muta el dict original.
+
+    `alcanzable`/`controllable` en español es texto libre no siempre
+    boolean-izable ("amplificador (no explotable en aislado)") — NO se fuerza a
+    boolean aqui; el renderer decide si mostrar el checkmark ingles o el texto
+    crudo segun que campos esten presentes (ver build_finding_cards_section_html)."""
+    if not expl:
+        return expl
+    out = dict(expl)
+    if out.get("verdict") is None and out.get("veredicto") is not None:
+        v_raw = str(out["veredicto"]).strip().lower()
+        out["verdict"] = _VEREDICTO_MAP.get(v_raw, out["veredicto"])
+    if out.get("conditions") is None and out.get("condiciones") is not None:
+        out["conditions"] = out["condiciones"]
+    if out.get("conceptual_chain") is None and out.get("cadena") is not None:
+        out["conceptual_chain"] = _flow_steps(out["cadena"])
+    if out.get("confidence_adjusted") is None and out.get("confianza_ajustada") is not None:
+        out["confidence_adjusted"] = out["confianza_ajustada"]
+    return out
+
+
 def fix_applied_real(f):
     """Fix aplicado de verdad: applied==true y NO un auto-'fixed' de rescan
     (desaparecer del escaner no es evidencia de correccion — CLAUDE.md regla 9)."""
@@ -129,7 +187,7 @@ def sorted_findings(findings):
 def compute(L):
     findings = L.get("findings", [])
     by_prio, kev, ransom = {}, 0, 0
-    fixed = verified = closed = closed_unverified = 0
+    fixed = verified = closed = closed_unverified = filtered = 0
     for f in findings:
         if not isinstance(f, dict):
             continue
@@ -152,9 +210,11 @@ def compute(L):
             closed += 1
         if f.get("status") == "closed" and not is_truly_closed(f):
             closed_unverified += 1
+        if is_filtered(f):
+            filtered += 1
     return {"by_prio": by_prio, "kev": kev, "ransom": ransom,
             "fixed": fixed, "verified": verified, "closed": closed,
-            "closed_unverified": closed_unverified}
+            "closed_unverified": closed_unverified, "filtered": filtered}
 
 
 def risk_verdict(L):
@@ -256,14 +316,15 @@ def build_md(L, ledger_path):
         o.append("|---|---|---|---|---|---|---|---|---|")
         for f in sorted_findings(findings):
             intel = f.get("intel") or {}
-            expl = f.get("exploitability") or {}
+            expl = normalize_exploitability(f.get("exploitability") or {})
             tri = f.get("triage") or {}
             ver = f.get("verification") or {}
             badges = ("KEV " if intel.get("in_cisa_kev") else "") + ("RANSOMWARE" if intel.get("known_ransomware_use") else "")
             owc = f"{f.get('owasp_2025') or f.get('owasp_2021') or '—'} / {f.get('cwe') or '—'}"
             est = f"{STATUS_LABEL.get(f.get('status'), f.get('status','—'))} / {ver.get('verdict','—')}"
             epss = intel.get("epss") if intel.get("epss") is not None else "—"
-            cvss = f"{tri.get('cvss')} v{tri.get('cvss_version')}" if tri.get("cvss") is not None else "—"
+            cvss_v = cvss_of(tri)
+            cvss = f"{cvss_v} v{tri.get('cvss_version')}" if cvss_v is not None else "—"
             o.append(f"| `{mdc(f.get('id'))}` | {mdc(prio_of(f))} | {mdc(cvss)} | {mdc((f.get('title') or '—') + (' ['+badges.strip()+']' if badges.strip() else ''))} "
                      f"| `{mdc(f.get('location'))}` | {mdc(owc)} | {mdc(expl.get('verdict','—'))} | {mdc(epss)} | {mdc(est)} |")
         o.append("")
@@ -279,7 +340,7 @@ def build_md(L, ledger_path):
     for f in sorted_findings(findings):
         sast = f.get("sast") or {}
         intel = f.get("intel") or {}
-        expl = f.get("exploitability") or {}
+        expl = normalize_exploitability(f.get("exploitability") or {})
         tri = f.get("triage") or {}
         tag = []
         if intel.get("in_cisa_kev"):
@@ -307,8 +368,10 @@ def build_md(L, ledger_path):
             if intel.get("sources_consulted"):
                 o.append(f"  - Fuentes consultadas: {mdc(joinlist(intel.get('sources_consulted')))}")
         if expl:
-            o.append(f"- **Explotabilidad:** {mdc(expl.get('verdict','—'))} "
-                     f"(reachable={mdc(expl.get('reachable'))}, controllable={mdc(expl.get('controllable'))})")
+            reach_txt = (f"reachable={mdc(expl.get('reachable'))}, controllable={mdc(expl.get('controllable'))}"
+                         if expl.get("reachable") is not None or expl.get("controllable") is not None
+                         else mdc(expl.get("alcanzable", "—")))
+            o.append(f"- **Explotabilidad:** {mdc(expl.get('verdict','—'))} ({reach_txt})")
             if expl.get("conditions"):
                 o.append(f"  - Condiciones para explotar: {mdc(expl.get('conditions'))}")
             if expl.get("conceptual_chain"):
@@ -543,7 +606,7 @@ def _svg_matrix(findings):
         p = prio_of(f)
         if p not in rows:
             continue
-        v = (f.get("exploitability") or {}).get("verdict") or "—"
+        v = normalize_exploitability(f.get("exploitability") or {}).get("verdict") or "—"
         if v not in ("EXPLOITABLE", "CONDITIONAL"):
             v = "—"
         grid[(p, v)] += 1
@@ -673,7 +736,11 @@ def _svg_bars_owasp(findings, top_n=8):
         return '<p class="muted">— sin datos —</p>'
     items = sorted(owc.items(), key=lambda kv: -kv[1]["total"])[:top_n]
     mx = max(v["total"] for _, v in items) or 1
-    order = ["P0", "P1", "P2", "P3", "FILTERED"]
+    # "—" incluido a proposito (no solo P0-P3/FILTERED): prio_of() ya normaliza
+    # cualquier valor no-canonico a FILTERED o "—" (nunca deja pasar un string
+    # crudo), pero esta lista debe reconocer TODO lo que prio_of() puede
+    # devolver o el segmento vuelve a desaparecer en silencio.
+    order = ["P0", "P1", "P2", "P3", "FILTERED", "—"]
     bw = 220
     rows = []
     seen_prios = set()
@@ -735,7 +802,7 @@ def _svg_scatter(findings):
             continue
         tri = f.get("triage") or {}
         intel = f.get("intel") or {}
-        cvss, epss = tri.get("cvss"), intel.get("epss")
+        cvss, epss = cvss_of(tri), intel.get("epss")
         if cvss is None or epss is None:
             continue
         try:
@@ -768,6 +835,12 @@ def build_charts_html(L, mode="technical", include_header=True):
     findings = L.get("findings", [])
     C = compute(L)
     total = len(findings)
+    # denominador de "Progreso de remediacion": excluye lo FILTRADO (no es un
+    # hallazgo real pendiente de remediar). Antes se pasaba `total` crudo, asi
+    # que un ledger real con muchos filtrados/duplicados mostraba "Pendientes"
+    # inflado (17 en vez de los 4 hallazgos reales) — contradecia a la propia
+    # dona, que ya excluye lo filtrado.
+    real_total = max(total - C["filtered"], 0)
     kev = C["kev"]
     lvl, vtext, vcolor = risk_verdict(L)
     verdict_html = (
@@ -788,7 +861,7 @@ def build_charts_html(L, mode="technical", include_header=True):
         chart_grid = (
             '<div class="chart-grid">'
             f'<div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C["by_prio"])}</div></div>'
-            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>'
+            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, real_total)}</div>'
             '</div>'
         )
     else:
@@ -797,7 +870,7 @@ def build_charts_html(L, mode="technical", include_header=True):
             f'<div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C["by_prio"])}</div></div>'
             f'<div class="chart"><div class="chart-t">Por categoría OWASP · apilado por severidad</div>{_svg_bars_owasp(findings)}</div>'
             f'<div class="chart"><div class="chart-t">Matriz de riesgo · severidad × explotabilidad</div>{_svg_matrix(findings)}</div>'
-            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>'
+            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, real_total)}</div>'
             f'<div class="chart chart-wide"><div class="chart-t">CVSS × EPSS · hallazgos abiertos</div>{_svg_scatter(findings)}</div>'
             '</div>'
         )
@@ -878,8 +951,16 @@ def build_attack_surface_html(L):
         return '<p class="muted">(sin superficie de ataque registrada por recon)</p>'
 
     def _facet(label, key):
-        v = joinlist(asf.get(key)) or "—"
-        return f'<div class="facet"><div class="flabel">{esc(label)}</div><div class="fval">{esc(v)}</div></div>'
+        v = asf.get(key)
+        if isinstance(v, (list, tuple)) and len(v) > 1:
+            # Lista real (no un parrafo corrido separado por comas): con rutas
+            # largas de un proyecto grande, unir todo con ", " en un solo <div>
+            # se vuelve un parrafo illegible de una sola linea gigante.
+            items = "".join(f"<li>{esc(i)}</li>" for i in v if i not in (None, ""))
+            fval = f'<ul class="asf-list">{items}</ul>'
+        else:
+            fval = esc(joinlist(v) or "—")
+        return f'<div class="facet"><div class="flabel">{esc(label)}</div><div class="fval">{fval}</div></div>'
 
     return ('<div class="facets">'
             + _facet("Entrypoints", "entrypoints")
@@ -931,7 +1012,7 @@ def build_findings_table_html(L):
     rows = []
     for f in sorted_findings(findings):
         intel = f.get("intel") or {}
-        expl = f.get("exploitability") or {}
+        expl = normalize_exploitability(f.get("exploitability") or {})
         tri = f.get("triage") or {}
         ver = f.get("verification") or {}
         prio = prio_of(f)
@@ -944,7 +1025,7 @@ def build_findings_table_html(L):
         expl_html = f'<span class="sev" style="color:{esc(expl_color)}" title="{esc(expl_verdict or "—")}">{esc(expl_short)}</span>'
         est = STATUS_LABEL.get(f.get("status"), f.get("status", "—"))
         epss = intel.get("epss")
-        cvss = tri.get("cvss")
+        cvss = cvss_of(tri)
         location = f.get("location") or "—"
         title_html = (f'<span class="tclamp" title="{esc(f.get("title") or "—")}">{esc(f.get("title") or "—")}</span>'
                       + (f' <span class="pill">{esc(badges.strip())}</span>' if badges.strip() else ""))
@@ -1022,7 +1103,7 @@ def build_finding_card_html(f, mode, tech_html_name=None):
     proyecto: test_no_sidestripe_border_left_accent)."""
     sast = f.get("sast") or {}
     intel = f.get("intel") or {}
-    expl = f.get("exploitability") or {}
+    expl = normalize_exploitability(f.get("exploitability") or {})
     tri = f.get("triage") or {}
     ver = f.get("verification") or {}
     fid = f.get("id", "?")
@@ -1119,10 +1200,20 @@ def build_finding_card_html(f, mode, tech_html_name=None):
         v = expl.get("verdict", "—")
         vcolor = HUD["red"] if v == "EXPLOITABLE" else (HUD["amber"] if v == "CONDITIONAL" else HUD["ink_mute"])
         reachable, controllable = expl.get("reachable"), expl.get("controllable")
-        reach = "✓" if reachable else ("✕" if reachable is not None else "—")
-        ctrl = "✓" if controllable else ("✕" if controllable is not None else "—")
-        reach_c = HUD["green_soft"] if reachable else HUD["red"]
-        ctrl_c = HUD["green_soft"] if controllable else HUD["red"]
+        if reachable is None and controllable is None and expl.get("alcanzable"):
+            # El productor real puede escribir "alcanzable" (texto libre, no
+            # siempre boolean-izable, p.ej. "amplificador (no explotable en
+            # aislado)") en vez de los booleanos reachable/controllable del
+            # schema -- se muestra tal cual en vez de forzar un ✓/✕ que
+            # inventaria una precision que el dato no tiene.
+            reach_ctrl_html = f'<span class="pill">{esc(expl.get("alcanzable"))}</span>'
+        else:
+            reach = "✓" if reachable else ("✕" if reachable is not None else "—")
+            ctrl = "✓" if controllable else ("✕" if controllable is not None else "—")
+            reach_c = HUD["green_soft"] if reachable else (HUD["red"] if reachable is not None else HUD["ink_mute"])
+            ctrl_c = HUD["green_soft"] if controllable else (HUD["red"] if controllable is not None else HUD["ink_mute"])
+            reach_ctrl_html = (f'<span style="color:{reach_c}">reachable {reach}</span> '
+                               f'<span style="color:{ctrl_c}">controllable {ctrl}</span>')
         conf = ""
         if expl.get("confidence_adjusted") is not None:
             conf = (f'<p class="fprose">Confianza: SAST {esc(sast.get("confidence","—"))} → '
@@ -1132,13 +1223,12 @@ def build_finding_card_html(f, mode, tech_html_name=None):
         facets.append(
             '<div class="facet"><div class="flabel">🎯 Explotabilidad</div><div class="fval">'
             f'<span class="sev" style="color:{vcolor}">{esc(v)}</span> '
-            f'<span style="color:{reach_c}">reachable {reach}</span> '
-            f'<span style="color:{ctrl_c}">controllable {ctrl}</span>'
+            f'{reach_ctrl_html}'
             f'{cond}{conf}{chain_html}</div></div>'
         )
 
     if tri:
-        cvss = tri.get("cvss")
+        cvss = cvss_of(tri)
         cvss_html = (f'<span class="cvss-n">{esc(cvss)}</span> <span class="pill">v{esc(tri.get("cvss_version","—"))}</span> '
                      if cvss is not None else "")
         rationale = f'<p class="fprose">{_prose(tri.get("rationale"))}</p>' if tri.get("rationale") else ""
@@ -1356,7 +1446,7 @@ tr.frow:hover{background:rgba(34,211,238,.05)}
 
 .chip{font-family:var(--mono);font-size:11.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-mute);background:rgba(255,255,255,.02);display:inline-flex;align-items:center;gap:6px}
 .pill{font-family:var(--mono);display:inline-block;padding:1px 8px;border-radius:5px;font-size:10.5px;border:1px solid var(--line-2);color:var(--ink-mute)}
-.sev{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 7px;border:1px solid currentColor}
+.sev{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 7px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
 .tag{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 6px;color:var(--bg);margin-left:4px}
 .cvss-n{font-family:var(--hud);font-size:1.3rem;color:var(--ink)}
 
@@ -1408,6 +1498,8 @@ details[open]>.dhead::after{transform:rotate(90deg)}
 .flabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan-soft);margin-bottom:6px;display:flex;align-items:center;gap:7px}
 .facet.good .flabel{color:var(--green-soft)}
 .fval{font-size:.92rem;color:var(--ink-soft);overflow-wrap:anywhere}
+.asf-list{margin:0;padding-left:1.1em}
+.asf-list li{margin:.2em 0;font-family:var(--mono);font-size:.88em}
 .fval .ok{color:var(--green-soft);font-weight:700}
 .fprose{margin:8px 0 0;font-family:var(--sans);font-size:.92rem;color:var(--ink-soft)}
 .statrow{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--ink-mute)}
@@ -1763,6 +1855,18 @@ def build_executive_html(L, md_name, pdf_name_exec, tech_html_name, has_pdf=Fals
         '<div class="facet good"><div class="flabel">Deploy</div><div class="fval">Sin bloqueos KEV activos.</div></div>'
     )
 
+    # Nota honesta: si el triage filtro/dedupe buena parte de lo detectado, el
+    # lector ejecutivo debe saberlo en una linea (no solo intuirlo comparando el
+    # KPI "Hallazgos" contra la dona, que ya excluye lo filtrado) — evita que
+    # "17 hallazgos" en el KPI lea como 17 amenazas reales.
+    filtered_note = ""
+    if C["filtered"]:
+        filtered_note = (
+            f'<p class="muted">{C["filtered"]} de {len(findings)} hallazgo(s) fueron descartados por el '
+            f'triage (duplicados o refutados tras análisis) — quedan {max(len(findings) - C["filtered"], 0)} '
+            f'reales. Ver el detalle de cada uno en el <a class="ext" href="{esc(tech_html_name)}">informe técnico</a>.</p>'
+        )
+
     pdf_link = f'<a class="dl" href="{esc(pdf_name_exec)}" download><span class="dl-l">PDF</span></a>' if has_pdf else ""
     css = _report_css()
     js = _interactivity_js()
@@ -1792,6 +1896,7 @@ def build_executive_html(L, md_name, pdf_name_exec, tech_html_name, has_pdf=Fals
   <div class="block">
     <div class="eyebrow">Panorama</div>
     {charts}
+    {filtered_note}
   </div>
   <div class="block">{deploy_html}</div>
   <div class="block">
