@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Marketplace del kit de seguridad vuln-hunter.",
-    "version": "2.2.0"
+    "version": "2.3.0"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
       "source": "./",
       "description": "Kit multi-agente OWASP para deteccion, triage, threat-intel, fix, patch y verificacion de vulnerabilidades.",
       "category": "security",
-      "version": "2.2.0"
+      "version": "2.3.0"
     }
   ]
 }
