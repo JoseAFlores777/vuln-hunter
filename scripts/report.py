@@ -7,15 +7,22 @@ Determinista y reproducible (no depende del LLM). Produce CINCO artefactos,
 listos para descargar desde el panel:
 
     <base>.md               informe en Markdown (texto plano, fuente de verdad)
-    <base>.html/.pdf         informe TECNICO (detalle diagnostico completo)
-    <base>-executive.html/.pdf  informe EJECUTIVO (veredicto, KPIs, casos top,
-                             plan de accion, con link permanente al tecnico)
+    <base>.html              dashboard TECNICO interactivo (tema oscuro, JS de
+                             filtrado/orden, cards colapsables) — para navegar en pantalla
+    <base>.pdf                documento FORMAL tecnico (portada, indice con paginas
+                             reales, encabezado/pie, paleta clara) — para leer/archivar/
+                             compartir; NO es un print-to-pdf del .html (ver
+                             build_formal_document_html())
+    <base>-executive.html/.pdf  version EJECUTIVA de ambos (condensada: veredicto,
+                             KPIs, solo casos top con detalle, plan de accion)
 
-El .html imprimible tiene boton "Descargar PDF" -> imprimir a PDF. El .pdf solo
-se genera si hay un convertidor disponible: se PREFIERE Chrome|Chromium|Edge
-headless (el CSS del informe usa Grid moderno que weasyprint no renderiza fiel,
-ver try_pdf()); si no hay ninguno, cae a weasyprint / wkhtmltopdf. Si no hay
-ningun convertidor, se omite el .pdf y se usa el boton del HTML.
+El .pdf solo se genera si hay un convertidor disponible: se PREFIERE weasyprint
+(motor de paginado real: soporta target-counter()/@page margin boxes, que el
+documento formal usa para el indice y el encabezado/pie — confirmado que Chrome
+headless NO los soporta), cae a wkhtmltopdf y por ultimo a Chrome|Chromium|Edge
+headless (funciona, pero el indice queda sin numeros de pagina). Si no hay
+ningun convertidor, se omite el .pdf y el boton "Descargar PDF" del dashboard
+queda como alternativa manual (esa SI es un print-to-pdf, del dashboard oscuro).
 
 Estructura del informe (comun a .md y a ambos .html):
     1. Auditoria y diagnostico  (superficie, hallazgos, diagnostico por hallazgo)
@@ -41,12 +48,18 @@ import re as _re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ledger as _ledger  # noqa: E402 — retrocompat: canonicaliza ids de repos ya auditados (ver main())
 
 PRIO_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "FILTERED": 9, "—": 5}
+
+# Los agentes a veces ya numeran sus pasos ("1) ...", "2) ...") dentro del texto
+# libre de conceptual_chain/flow; strip antes de renderizar para no duplicar la
+# numeracion que aplican los renderers de kill-chain (dashboard e informe formal).
+_LEADING_NUM_RE = _re.compile(r"^\s*\(?\d{1,2}[\.\)]\s*")
 
 # Tokens de color HUD: copiados LITERALMENTE de panel/index.html (:root, linea
 # ~19-31) — es la identidad visual ya en produccion del panel, no una paleta
@@ -67,6 +80,22 @@ STATUS_LABEL = {
     "candidate-resolved": "Candidato a resuelto", "fixed": "Corregida",
     "closed": "Cerrada", "filtered": "Filtrada",
 }
+
+GLOSSARY = [
+    ("Hallazgo", "Una vulnerabilidad candidata con un id creciente (p.ej. VULN-001). Acumula el análisis de cada etapa."),
+    ("Severidad (P0–P3)", "Prioridad de atención. **P0** = crítico/inmediato; **P3** = bajo. Se calcula con CVSS + EPSS + KEV."),
+    ("CVSS", "Puntaje estándar de gravedad técnica de una vulnerabilidad (0–10)."),
+    ("EPSS", "Probabilidad (0–1) de que una vulnerabilidad sea explotada en los próximos 30 días."),
+    ("CISA KEV", "Catálogo de vulnerabilidades con explotación CONFIRMADA in-the-wild. Un CVE aquí es bloqueante de deploy (vector típico de ransomware, ATT&CK T1190)."),
+    ("OWASP Top 10", "Lista de referencia de las 10 categorías de riesgo web más comunes."),
+    ("CWE", "Catálogo de tipos de debilidad de software (p.ej. CWE-89 = inyección SQL)."),
+    ("SAST", "Análisis estático del código propio para encontrar vulnerabilidades."),
+    ("SCA", "Análisis de dependencias de terceros contra bases de CVEs."),
+    ("Explotabilidad", "Si la vulnerabilidad es realmente alcanzable y aprovechable (PoC conceptual, sin exploit real)."),
+    ("Causa raíz", "El origen real del problema, no el síntoma. El fix la ataca para que no reaparezca."),
+    ("ASVS", "Estándar OWASP de requisitos de seguridad; cada fix se mapea a uno."),
+    ("Estado del hallazgo", "Encontrado → En proceso → Corregido → **Cerrado** (verificado sin regresión) / Filtrado (descartado)."),
+]
 
 
 # ----------------------------- helpers --------------------------------------
@@ -238,10 +267,13 @@ def risk_verdict(L):
         return ("sin hallazgos", "Sin hallazgos en el ledger. Corre la auditoría para poblarlo.", HUD["green"])
     if not open_f:
         return ("controlado", f"Todos los hallazgos cerrados o filtrados ({C['closed']}/{len(findings)}). Riesgo bajo control.", HUD["green"])
+    # vtext NUNCA repite "Riesgo {lvl}:" — los 4 consumidores (dashboard,
+    # ejecutivo, portada impresa, parrafo del formal) ya anteponen ese badge
+    # por su cuenta; con el prefijo aqui salia "Riesgo medio — Riesgo medio: ...".
     if open_p0 or open_kev:
-        return ("alto", "Riesgo alto: " + " · ".join(bits) + ".", HUD["red"])
+        return ("alto", " · ".join(bits) + ".", HUD["red"])
     if open_p1:
-        return ("medio", "Riesgo medio: " + " · ".join(bits) + ".", HUD["orange"])
+        return ("medio", " · ".join(bits) + ".", HUD["orange"])
     return ("moderado", f"{len(open_f)} hallazgo(s) abiertos de prioridad media/baja.", HUD["amber"])
 
 
@@ -477,22 +509,7 @@ def build_md(L, ledger_path):
     # Glosario didactico
     o.append("---\n\n## 4. Glosario\n")
     o.append("Términos para leer este informe sin ser especialista:\n")
-    gloss = [
-        ("Hallazgo", "Una vulnerabilidad candidata con un id creciente (p.ej. VULN-001). Acumula el análisis de cada etapa."),
-        ("Severidad (P0–P3)", "Prioridad de atención. **P0** = crítico/inmediato; **P3** = bajo. Se calcula con CVSS + EPSS + KEV."),
-        ("CVSS", "Puntaje estándar de gravedad técnica de una vulnerabilidad (0–10)."),
-        ("EPSS", "Probabilidad (0–1) de que una vulnerabilidad sea explotada en los próximos 30 días."),
-        ("CISA KEV", "Catálogo de vulnerabilidades con explotación CONFIRMADA in-the-wild. Un CVE aquí es bloqueante de deploy (vector típico de ransomware, ATT&CK T1190)."),
-        ("OWASP Top 10", "Lista de referencia de las 10 categorías de riesgo web más comunes."),
-        ("CWE", "Catálogo de tipos de debilidad de software (p.ej. CWE-89 = inyección SQL)."),
-        ("SAST", "Análisis estático del código propio para encontrar vulnerabilidades."),
-        ("SCA", "Análisis de dependencias de terceros contra bases de CVEs."),
-        ("Explotabilidad", "Si la vulnerabilidad es realmente alcanzable y aprovechable (PoC conceptual, sin exploit real)."),
-        ("Causa raíz", "El origen real del problema, no el síntoma. El fix la ataca para que no reaparezca."),
-        ("ASVS", "Estándar OWASP de requisitos de seguridad; cada fix se mapea a uno."),
-        ("Estado del hallazgo", "Encontrado → En proceso → Corregido → **Cerrado** (verificado sin regresión) / Filtrado (descartado)."),
-    ]
-    for term, desc in gloss:
+    for term, desc in GLOSSARY:
         o.append(f"- **{term}:** {desc}")
     o.append("")
 
@@ -1068,7 +1085,8 @@ def _killchain_html(items):
     items = [i for i in items if i]
     if not items:
         return ""
-    lis = "".join(f'<li><span class="kn">{i+1}</span><span class="kt">{_prose(item)}</span></li>' for i, item in enumerate(items))
+    cleaned = [_LEADING_NUM_RE.sub("", i, count=1) if isinstance(i, str) else i for i in items]
+    lis = "".join(f'<li><span class="kn">{i+1}</span><span class="kt">{_prose(item)}</span></li>' for i, item in enumerate(cleaned))
     return f'<ol class="killchain">{lis}</ol>'
 
 
@@ -1924,6 +1942,541 @@ def build_executive_html(L, md_name, pdf_name_exec, tech_html_name, has_pdf=Fals
 </body></html>"""
 
 
+# ----------------------------- documento formal (PDF) -----------------------
+# El PDF NO es un print-to-pdf del dashboard interactivo (fondo oscuro, cards
+# colapsables, JS de filtrado) -- es un documento APARTE, deliberadamente mas
+# simple, pensado para leerse de principio a fin en papel/pantalla: portada,
+# indice con numeros de pagina REALES, encabezado/pie en cada pagina, paleta
+# clara tradicional. Comparte toda la logica de DATOS con el dashboard
+# (compute/prio_of/cvss_of/normalize_exploitability/sorted_findings/...) pero
+# NO su capa de presentacion (esa inyecta el color oscuro inline; no vale la
+# pena parametrizarla, son productos distintos con audiencias distintas).
+#
+# Requiere un motor de paginado REAL (soporte de target-counter() para los
+# numeros de pagina del indice, y @page margin boxes para encabezado/pie con
+# counter(page)/counter(pages)): verificado que weasyprint lo soporta
+# correctamente y Chrome headless NO (ni con --print-to-pdf ni con ninguna
+# combinacion de flags) -- ver try_formal_pdf(), que por eso invierte el
+# orden de preferencia de try_pdf() SOLO para este documento.
+PRINT = {
+    "bg": "#ffffff", "bg_soft": "#f4f5f7", "panel": "#fbfbfc",
+    "ink": "#1a1f2b", "ink_soft": "#3d4552", "ink_mute": "#6b7280",
+    "line": "#d9dde3", "line_soft": "#eceef1",
+    "red": "#b3261e", "orange": "#c2650a", "amber": "#8a6d1a", "green": "#15803d",
+    "green_soft": "#1f9d5c", "accent": "#1d4e89", "accent_soft": "#2f6fb3",
+}
+PRINT_PRIO = {"P0": PRINT["red"], "P1": PRINT["orange"], "P2": PRINT["amber"],
+              "P3": PRINT["ink_mute"], "FILTERED": PRINT["ink_mute"], "—": PRINT["ink_mute"]}
+# Traduccion SOLO para el texto visible del PDF -- el literal en ingles
+# (schema/ledger-contract, comparaciones == "EXPLOITABLE" etc.) no se toca en
+# ningun lado: estos dict solo deciden que palabra imprimir en el badge.
+PRINT_PRIO_LABEL = {"FILTERED": "FILTRADO"}
+PRINT_EXPL_LABEL = {"EXPLOITABLE": "EXPLOTABLE", "CONDITIONAL": "CONDICIONAL", "NOT_EXPLOITABLE": "NO EXPLOTABLE"}
+PRINT_VER_LABEL = {"CLOSED": "CERRADO", "NOT_CLOSED": "NO CERRADO", "REGRESSION": "REGRESIÓN"}
+PRINT_SANS = "'Helvetica Neue',Helvetica,Arial,sans-serif"
+PRINT_SERIF = "Georgia,'Times New Roman',serif"
+PRINT_MONO = "'SFMono-Regular',Consolas,'Liberation Mono',monospace"
+
+
+def _print_css(doc_title):
+    return f"""
+@page {{
+  size: A4;
+  margin: 24mm 20mm 20mm 20mm;
+  @top-left {{ content: "vuln-hunter"; font-family:{PRINT_SANS}; font-size:8.5pt; font-weight:700; letter-spacing:.05em; color:{PRINT["ink_mute"]}; }}
+  @top-right {{ content: "{doc_title}"; font-family:{PRINT_SANS}; font-size:8.5pt; color:{PRINT["ink_mute"]}; }}
+  @bottom-center {{ content: "Página " counter(page) " de " counter(pages); font-family:{PRINT_SANS}; font-size:8.5pt; color:{PRINT["ink_mute"]}; }}
+  @bottom-right {{ content: "CONFIDENCIAL"; font-family:{PRINT_SANS}; font-size:8pt; font-weight:700; letter-spacing:.05em; color:{PRINT["red"]}; }}
+}}
+@page :first {{
+  @top-left {{ content:""; }} @top-right {{ content:""; }}
+  @bottom-center {{ content:""; }} @bottom-right {{ content:""; }}
+}}
+*{{box-sizing:border-box}}
+body{{margin:0;font-family:{PRINT_SERIF};color:{PRINT["ink"]};line-height:1.55;font-size:10.5pt;background:{PRINT["bg"]}}}
+h1,h2,h3,h4{{font-family:{PRINT_SANS};color:#12151c;font-weight:700;line-height:1.25}}
+p,li{{font-size:10pt}}
+a{{color:{PRINT["accent"]}}}
+code{{font-family:{PRINT_MONO};background:{PRINT["bg_soft"]};padding:1px 5px;border-radius:3px;font-size:.9em;overflow-wrap:anywhere}}
+
+/* justify-content:center dejaba el bloque de titulo/tabla flotando a medio
+   folio con un hueco enorme arriba Y abajo (visto en el PDF real) -- una
+   portada formal ancla el titulo cerca del tercio superior y usa el resto
+   para el veredicto + el pie legal, no para aire vacio de sobra. */
+.cover{{break-after:page;min-height:235mm;display:flex;flex-direction:column;justify-content:flex-start;padding-top:58mm;border-top:5px solid {PRINT["accent"]}}}
+.cover .brand{{font-family:{PRINT_SANS};font-size:12.5pt;letter-spacing:.14em;text-transform:uppercase;color:{PRINT["accent"]};font-weight:700;margin-bottom:.6em}}
+.cover h1{{font-size:27pt;margin:0 0 .15em}}
+.cover .subtitle{{font-family:{PRINT_SANS};font-size:12.5pt;color:{PRINT["ink_soft"]};margin-bottom:1.6em}}
+.cover .meta-table{{width:65%;border-collapse:collapse;margin-bottom:1.6em}}
+.cover .meta-table td{{padding:5px 0;font-size:10pt;border-bottom:1px solid {PRINT["line_soft"]}}}
+.cover .meta-table td:first-child{{font-family:{PRINT_SANS};color:{PRINT["ink_mute"]};text-transform:uppercase;letter-spacing:.04em;font-size:8pt;width:38%}}
+.cover .verdict-banner{{border:1.5px solid currentColor;border-radius:7px;padding:14px 20px;display:inline-block;margin-bottom:1.5em;max-width:75%}}
+.cover .verdict-lvl{{font-family:{PRINT_SANS};font-weight:700;font-size:13pt;text-transform:uppercase;display:block;margin-bottom:3px}}
+.cover .verdict-txt{{font-family:{PRINT_SERIF};font-size:10pt;color:{PRINT["ink_soft"]}}}
+.cover .confidential{{margin-top:auto;padding-top:2em;font-family:{PRINT_SANS};font-size:9pt;color:{PRINT["red"]};font-weight:700;letter-spacing:.06em}}
+.cover .disclaimer{{font-family:{PRINT_SANS};font-size:8.5pt;color:{PRINT["ink_mute"]};margin-top:.5em;max-width:80%}}
+
+.toc-page{{break-after:page}}
+.toc-page h2{{font-size:16pt;border-bottom:2px solid {PRINT["accent"]};padding-bottom:7px;margin-bottom:18px}}
+.toc-row{{display:flex;align-items:baseline;gap:6px;font-family:{PRINT_SANS};font-size:10pt;margin:6px 0;text-decoration:none;color:{PRINT["ink"]}}}
+.toc-row.lvl3{{padding-left:18px;font-size:9pt;color:{PRINT["ink_soft"]}}}
+.toc-row .leader{{flex:1 1 auto;border-bottom:1px dotted {PRINT["line"]};position:relative;top:-3px;margin:0 4px;min-width:8px}}
+/* target-counter() lee el atributo href del elemento AL QUE SE APLICA la
+   regla -- por eso el numero de pagina va en el ::after del propio <a>
+   (flex, asi cae despues de .leader en el orden visual), no en un <span>
+   anidado sin href propio (eso se probo y quedaba vacio: attr() no sube a
+   buscar el atributo en un ancestro). */
+.toc-row::after{{content:target-counter(attr(href url),page);font-variant-numeric:tabular-nums}}
+
+h2.sec{{font-size:15pt;border-bottom:1.5px solid {PRINT["line"]};padding-bottom:6px;margin:0 0 .7em;break-after:avoid}}
+h2.sec .n{{color:{PRINT["accent"]};margin-right:.35em}}
+h3.subsec{{font-size:11.5pt;color:{PRINT["accent"]};margin:1.5em 0 .5em;break-after:avoid}}
+section.print-sec{{break-before:page}}
+section.print-sec:first-of-type{{break-before:auto}}
+
+table{{width:100%;border-collapse:collapse;font-size:9pt;margin:.6em 0 1.3em}}
+th,td{{text-align:left;padding:6px 8px;border-bottom:1px solid {PRINT["line_soft"]};vertical-align:top}}
+th{{background:{PRINT["bg_soft"]};font-family:{PRINT_SANS};font-size:7.8pt;text-transform:uppercase;letter-spacing:.03em;color:{PRINT["ink_mute"]}}}
+tr{{break-inside:avoid}}
+/* zebra striping en tablas de datos (no en la portada, esa es 2 columnas
+   etiqueta/valor y las franjas ahi solo ensucian) -- ayuda a seguir la fila
+   en tablas anchas de 5-6 columnas como Hallazgos. */
+table:not(.meta-table) tbody tr:nth-child(even){{background:{PRINT["bg_soft"]}}}
+
+/* table-layout:auto exprimia la columna ID (contenido corto, "VULN-001")
+   hasta partirla letra por letra para dejarle sitio a Titulo/Ubicacion (largos)
+   -- visto en el PDF real via inspeccion visual pagina 7. Ancho fijo por
+   columna + nowrap en el codigo del ID lo evita sin tocar el resto. */
+table.findings-table{{table-layout:fixed}}
+table.findings-table td:first-child code, table.findings-table th:first-child{{white-space:nowrap}}
+/* la columna Prio debe caber "FILTERED" (el badge mas largo), no solo "P0"/"P1" */
+table.findings-table td:nth-child(2) .sev-badge{{padding:1px 6px;font-size:7.3pt}}
+table.findings-table.cols-6 th:nth-child(1),table.findings-table.cols-6 td:nth-child(1){{width:9%}}
+table.findings-table.cols-6 th:nth-child(2),table.findings-table.cols-6 td:nth-child(2){{width:11%}}
+table.findings-table.cols-6 th:nth-child(3),table.findings-table.cols-6 td:nth-child(3){{width:6%}}
+table.findings-table.cols-6 th:nth-child(4),table.findings-table.cols-6 td:nth-child(4){{width:29%}}
+table.findings-table.cols-6 th:nth-child(5),table.findings-table.cols-6 td:nth-child(5){{width:29%}}
+table.findings-table.cols-6 th:nth-child(6),table.findings-table.cols-6 td:nth-child(6){{width:16%}}
+table.findings-table.cols-4 th:nth-child(1),table.findings-table.cols-4 td:nth-child(1){{width:12%}}
+table.findings-table.cols-4 th:nth-child(2),table.findings-table.cols-4 td:nth-child(2){{width:16%}}
+table.findings-table.cols-4 th:nth-child(3),table.findings-table.cols-4 td:nth-child(3){{width:52%}}
+table.findings-table.cols-4 th:nth-child(4),table.findings-table.cols-4 td:nth-child(4){{width:20%}}
+
+.sev-badge{{display:inline-block;font-family:{PRINT_SANS};font-weight:700;font-size:8pt;padding:1px 8px;border-radius:4px;border:1.3px solid currentColor;white-space:nowrap}}
+.tag-badge{{display:inline-block;font-family:{PRINT_SANS};font-weight:700;font-size:7.5pt;padding:1px 7px;border-radius:4px;color:#fff;margin-left:4px}}
+
+.callout{{border:1px solid {PRINT["line"]};background:{PRINT["bg_soft"]};border-radius:6px;padding:11px 15px;margin:1em 0;font-size:9.5pt;break-inside:avoid}}
+.callout.warn{{border-color:#e3b25a;background:#fbf3e3}}
+.callout b{{font-family:{PRINT_SANS}}}
+
+.finding-block{{break-inside:avoid-page;margin-bottom:1.5em;padding:.1em 0 1.2em 12px;border-bottom:1px solid {PRINT["line_soft"]}}}
+.finding-block h3{{margin:0 0 .3em;font-size:11.5pt}}
+.finding-block .fmeta{{font-family:{PRINT_SANS};font-size:8pt;color:{PRINT["ink_mute"]};margin-bottom:.6em}}
+.fact-grid{{display:table;width:100%;margin:.4em 0 .8em;border-collapse:collapse}}
+.fact-row{{display:table-row}}
+.fact-label{{display:table-cell;width:20%;font-family:{PRINT_SANS};font-size:7.8pt;text-transform:uppercase;letter-spacing:.03em;color:{PRINT["ink_mute"]};padding:3px 10px 3px 0;vertical-align:top}}
+.fact-val{{display:table-cell;padding:3px 0;font-size:9.5pt;vertical-align:top}}
+.killstep{{margin:2px 0;font-family:{PRINT_MONO};font-size:8.6pt;color:{PRINT["ink_soft"]}}}
+.killstep b{{color:{PRINT["ink"]};font-family:{PRINT_SANS}}}
+
+.action-cols{{display:table;width:100%;table-layout:fixed;border-spacing:10px 0;margin:.5em -10px}}
+.action-col{{display:table-cell;width:33.33%;vertical-align:top;border:1px solid {PRINT["line"]};border-radius:6px;padding:10px 12px}}
+.action-col h4{{font-size:9pt;text-transform:uppercase;letter-spacing:.03em;color:{PRINT["ink_mute"]};margin:0 0 .5em}}
+.action-item{{font-size:9pt;margin:.35em 0;break-inside:avoid}}
+.action-item code{{display:block;margin-bottom:1px}}
+
+dl.gloss{{font-size:9pt}}
+dl.gloss dt{{font-family:{PRINT_SANS};font-weight:700;margin-top:.7em}}
+dl.gloss dd{{margin:.15em 0 0}}
+"""
+
+
+def _print_verdict_color(lvl):
+    return {"alto": PRINT["red"], "medio": PRINT["orange"], "moderado": PRINT["amber"],
+            "controlado": PRINT["green"], "sin hallazgos": PRINT["ink_mute"]}.get(lvl, PRINT["ink_mute"])
+
+
+def _print_cover_html(L, mode, doc_title):
+    run = L.get("run", {})
+    findings = L.get("findings", [])
+    C = compute(L)
+    lvl, vtext, vcolor = risk_verdict(L)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    subtitle = ("Informe técnico completo" if mode == "technical"
+                else "Resumen ejecutivo — solo hallazgos de mayor riesgo")
+    pcolor = _print_verdict_color(lvl)
+    meta = [
+        ("Alcance", run.get("scope") or "repo completo"),
+        ("Branch", run.get("branch") or "—"),
+        ("Marco OWASP", run.get("owasp_version") or "2025"),
+        ("Hallazgos totales", str(len(findings))),
+        ("Generado", now),
+    ]
+    meta_html = "".join(f"<tr><td>{esc(k)}</td><td>{esc(v)}</td></tr>" for k, v in meta)
+    return f"""<div class="cover">
+  <div class="brand">vuln-hunter</div>
+  <h1>{esc(doc_title)}</h1>
+  <div class="subtitle">{esc(subtitle)}</div>
+  <table class="meta-table"><tbody>{meta_html}</tbody></table>
+  <div class="verdict-banner" style="color:{esc(pcolor)}">
+    <span class="verdict-lvl">Riesgo {esc(lvl)}</span>
+    <span class="verdict-txt">{esc(vtext)}</span>
+  </div>
+  <div class="confidential">CONFIDENCIAL — USO INTERNO</div>
+  <div class="disclaimer">Auditoría defensiva y autorizada del código propio. No sustituye una auditoría
+  humana ni herramientas SAST/DAST dedicadas. Generado de forma determinista desde el ledger de la
+  corrida ({esc(C['closed'])} cerrados · {esc(C['fixed'])} corregidos de {esc(len(findings))} hallazgos).</div>
+</div>"""
+
+
+def _print_toc_html(entries):
+    rows = []
+    for slug, label, level in entries:
+        cls = "toc-row lvl3" if level == 3 else "toc-row"
+        rows.append(f'<a class="{cls}" href="#{esc(slug)}">{esc(label)}<span class="leader"></span></a>')
+    return f'<div class="toc-page"><h2>Índice</h2>{"".join(rows)}</div>'
+
+
+def _print_findings_table_html(findings, mode):
+    if not findings:
+        return "<p><em>Sin hallazgos en el ledger.</em></p>"
+    heads = (["ID", "Prio", "CVSS", "Título", "Ubicación", "Estado"] if mode == "technical"
+             else ["ID", "Prio", "Título", "Estado"])
+    ths = "".join(f"<th>{esc(h)}</th>" for h in heads)
+    rows = []
+    for f in sorted_findings(findings):
+        tri = f.get("triage") or {}
+        ver = f.get("verification") or {}
+        prio = prio_of(f)
+        est = STATUS_LABEL.get(f.get("status"), f.get("status", "—"))
+        if ver.get("verdict"):
+            est += f" / {esc(PRINT_VER_LABEL.get(ver.get('verdict'), ver.get('verdict')))}"
+        badge = (f'<span class="sev-badge" style="color:{esc(PRINT_PRIO.get(prio, PRINT["ink_mute"]))}">'
+                 f'{esc(PRINT_PRIO_LABEL.get(prio, prio))}</span>')
+        title_cell = f'<a href="#{esc(f.get("id",""))}">{esc(f.get("title") or "—")}</a>'
+        if mode == "technical":
+            cvss_v = cvss_of(tri)
+            cvss_cell = f"{cvss_v:g}" if isinstance(cvss_v, (int, float)) else "—"
+            rows.append(
+                f"<tr><td><code>{esc(f.get('id','?'))}</code></td><td>{badge}</td>"
+                f"<td>{esc(cvss_cell)}</td><td>{title_cell}</td>"
+                f"<td><code>{esc(f.get('location') or '—')}</code></td><td>{esc(est)}</td></tr>"
+            )
+        else:
+            rows.append(
+                f"<tr><td><code>{esc(f.get('id','?'))}</code></td><td>{badge}</td>"
+                f"<td>{title_cell}</td><td>{esc(est)}</td></tr>"
+            )
+    cols_cls = "cols-6" if mode == "technical" else "cols-4"
+    return f"<table class=\"findings-table {cols_cls}\"><thead><tr>{ths}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _print_fact_row(label, value_html):
+    return f'<div class="fact-row"><div class="fact-label">{esc(label)}</div><div class="fact-val">{value_html}</div></div>'
+
+
+def _print_killsteps_html(steps):
+    steps = [s for s in steps if s]
+    if not steps:
+        return ""
+    cleaned = [_LEADING_NUM_RE.sub("", s, count=1) for s in steps]
+    return "".join(f'<div class="killstep"><b>{i+1}.</b> {esc(s)}</div>' for i, s in enumerate(cleaned))
+
+
+def _print_finding_block_html(f):
+    """Un bloque por hallazgo (solo tecnico): igual de completo que la card
+    interactiva (misma logica de datos: cvss_of/normalize_exploitability/
+    _flow_steps), pero como texto formal en vez de widget colapsable."""
+    fid = f.get("id", "?")
+    title = f.get("title") or "(sin título)"
+    prio = prio_of(f)
+    tri = f.get("triage") or {}
+    sast = f.get("sast") or {}
+    intel = f.get("intel") or {}
+    expl = normalize_exploitability(f.get("exploitability") or {})
+    ver = f.get("verification") or {}
+    fix = f.get("fix") or {}
+    intel_flags = ("KEV" if intel.get("in_cisa_kev") else "") + (" RANSOMWARE" if intel.get("known_ransomware_use") else "")
+    badges = (f'<span class="sev-badge" style="color:{esc(PRINT_PRIO.get(prio, PRINT["ink_mute"]))}">'
+              f'{esc(PRINT_PRIO_LABEL.get(prio, prio))}</span>')
+    if intel.get("in_cisa_kev"):
+        badges += f'<span class="tag-badge" style="background:{PRINT["red"]}">KEV</span>'
+    if intel.get("known_ransomware_use"):
+        badges += f'<span class="tag-badge" style="background:{PRINT["orange"]}">RANSOMWARE</span>'
+    est = STATUS_LABEL.get(f.get("status"), f.get("status", "—"))
+
+    facts = [_print_fact_row("Ubicación", f'<code>{esc(f.get("location") or "—")}</code>')]
+    owc = f.get("owasp_2025") or f.get("owasp_2021") or "—"
+    facts.append(_print_fact_row("OWASP / CWE", f'{esc(owc)} / {esc(f.get("cwe") or "—")}'))
+
+    if sast:
+        sast_val = f'{esc(sast.get("tool","—"))} · regla <code>{esc(sast.get("rule","—"))}</code> · confianza {esc(sast.get("confidence","—"))}'
+        if sast.get("hypothesis"):
+            sast_val += f'<br>{esc(sast.get("hypothesis"))}'
+        sast_val += _print_killsteps_html(_flow_steps(sast.get("flow")))
+        facts.append(_print_fact_row("SAST", sast_val))
+
+    if intel:
+        dep_val = f'{esc(intel.get("package","—"))}@{esc(intel.get("installed_version","—"))}'
+        if intel.get("fixed_version"):
+            dep_val += f' → <b>{esc(intel.get("fixed_version"))}</b>'
+        ids = joinlist(intel.get("cve_ids")) + ("  " + joinlist(intel.get("ghsa_ids")) if intel.get("ghsa_ids") else "")
+        if ids:
+            dep_val += f'<br>{esc(ids)}'
+        if intel.get("epss") is not None:
+            dep_val += f'<br>EPSS: {esc(intel.get("epss"))}'
+        facts.append(_print_fact_row("Dependencia", dep_val))
+
+    if expl:
+        v = expl.get("verdict", "—")
+        vcolor = PRINT["red"] if v == "EXPLOITABLE" else (PRINT["orange"] if v == "CONDITIONAL" else PRINT["ink_mute"])
+        expl_val = f'<span class="sev-badge" style="color:{esc(vcolor)}">{esc(PRINT_EXPL_LABEL.get(v, v))}</span>'
+        reachable, controllable = expl.get("reachable"), expl.get("controllable")
+
+        def _si_no(b):
+            return "—" if b is None else ("Sí" if b else "No")
+
+        if reachable is None and controllable is None and expl.get("alcanzable"):
+            expl_val += f' · {esc(expl.get("alcanzable"))}'
+        elif reachable is not None or controllable is not None:
+            expl_val += f' · alcanzable={esc(_si_no(reachable))}, controlable={esc(_si_no(controllable))}'
+        if expl.get("conditions"):
+            expl_val += f'<br>{esc(expl.get("conditions"))}'
+        expl_val += _print_killsteps_html(_as_list(expl.get("conceptual_chain")))
+        if expl.get("confidence_adjusted") is not None:
+            expl_val += f'<br>Confianza ajustada: {esc(expl.get("confidence_adjusted"))}/10'
+        facts.append(_print_fact_row("Explotabilidad", expl_val))
+
+    if tri:
+        cvss_v = cvss_of(tri)
+        tri_val = f"{cvss_v:g} (v{tri.get('cvss_version','—')})" if isinstance(cvss_v, (int, float)) else "—"
+        if tri.get("rationale"):
+            tri_val += f'<br>{esc(tri.get("rationale"))}'
+        if tri.get("dedup_of"):
+            tri_val += f'<br>Duplicado de <a href="#{esc(tri.get("dedup_of"))}"><code>{esc(tri.get("dedup_of"))}</code></a>'
+        facts.append(_print_fact_row("Triage", tri_val))
+
+    if fix:
+        fix_val = esc(fix.get("summary") or fix.get("root_cause") or "—")
+        if fix.get("root_cause") and fix.get("summary"):
+            fix_val = f'Causa raíz: {esc(fix.get("root_cause"))}<br>{esc(fix.get("summary"))}'
+        if fix.get("asvs"):
+            fix_val += f'<br>ASVS: {esc(joinlist(fix.get("asvs")))}'
+        if fix.get("files_touched"):
+            fix_val += f'<br><code>{esc(joinlist(fix.get("files_touched")))}</code>'
+        facts.append(_print_fact_row("Fix aplicado" if fix.get("applied") else "Enfoque de fix", fix_val))
+
+    honesty = ""
+    if f.get("status") == "closed" and not is_truly_closed(f):
+        honesty = ('<div class="callout warn"><b>estado: cerrado</b> pero sin veredicto <b>CERRADO</b> del '
+                   'verify-engineer — no cuenta como cerrado en este informe.</div>')
+    elif ver.get("verdict"):
+        vcol = {"CLOSED": PRINT["green"], "NOT_CLOSED": PRINT["orange"], "REGRESSION": PRINT["red"]}.get(ver.get("verdict"), PRINT["ink_mute"])
+        ev = f' — {esc(ver.get("evidence"))}' if ver.get("evidence") else ""
+        honesty = (f'<div class="callout" style="border-color:{esc(vcol)}"><b>Verificación:</b> '
+                   f'{esc(PRINT_VER_LABEL.get(ver.get("verdict"), ver.get("verdict")))}{ev}</div>')
+
+    # barra de color a la izquierda = severidad, de un vistazo al hojear el PDF
+    # (antes solo el badge P0/P1 lo indicaba, perdido si se hojea en miniatura)
+    accent = esc(PRINT_PRIO.get(prio, PRINT["ink_mute"]))
+    return (f'<div class="finding-block" id="{esc(fid)}" style="border-left:3px solid {accent}">'
+            f'<h3><code>{esc(fid)}</code> — {esc(title)}</h3>'
+            f'<div class="fmeta">{badges} · {esc(est)}{(" · " + esc(intel_flags.strip())) if intel_flags.strip() else ""}</div>'
+            f'<div class="fact-grid">{"".join(facts)}</div>{honesty}</div>')
+
+
+def _print_action_plan_html(findings):
+    inmediato, semana, mes = action_buckets(findings)
+
+    def _col(title, items):
+        if not items:
+            body = '<p class="action-item"><em>(nada)</em></p>'
+        else:
+            body = "".join(
+                f'<div class="action-item"><code>{esc(it.get("id","?"))}</code>{esc(it.get("title",""))}</div>'
+                for it in items
+            )
+        return f'<div class="action-col"><h4>{esc(title)}</h4>{body}</div>'
+
+    return (f'<div class="action-cols">{_col("Inmediato (P0 / KEV)", inmediato)}'
+            f'{_col("Esta semana (P1)", semana)}{_col("Este mes (P2 / P3)", mes)}</div>')
+
+
+def _print_glossary_html():
+    # el glosario markdown usa **negrita**; en texto formal basta mostrarlo sin marcado
+    dts = "".join(
+        f"<dt>{esc(term)}</dt><dd>{esc(desc).replace('**', '')}</dd>"
+        for term, desc in GLOSSARY
+    )
+    return f'<dl class="gloss">{dts}</dl>'
+
+
+def build_formal_document_html(L, mode="technical"):
+    """Documento PDF formal completo: portada + índice con páginas reales +
+    cuerpo en paleta clara. mode: "technical" (todo el detalle) | "executive"
+    (condensado, solo P0/P1/KEV con detalle, el resto en una tabla-resumen)."""
+    findings = L.get("findings", [])
+    C = compute(L)
+    lvl, vtext, vcolor = risk_verdict(L)
+    doc_title = "Informe técnico de auditoría" if mode == "technical" else "Resumen ejecutivo"
+    toc_entries = []
+    parts = []
+
+    # Numeracion AUTOMATICA (nunca hardcodeada): algunas secciones son
+    # condicionales (p.ej. "Resultados" solo si hay fix/verification), asi que
+    # numeros fijos ("6.", "7.") se desincronizan en cuanto una seccion de en
+    # medio no se emite (visto: el indice saltaba de "5." a "7." sin "6.").
+    sec_n = [0]
+
+    def _sec(label, level=2):
+        if level == 2:
+            sec_n[0] += 1
+        num = f"{sec_n[0]}." if level == 2 else ""
+        full_label = f"{num} {label}" if num else label
+        slug = slugify(full_label)
+        toc_entries.append((slug, full_label, level))
+        tag = "h2" if level == 2 else "h3"
+        klass = "sec" if level == 2 else "subsec"
+        prefix = f'<span class="n">{esc(num)}</span>' if num else ""
+        heading = f'<{tag} id="{slug}" class="{klass}">{prefix}{esc(label)}</{tag}>'
+        if level == 2:
+            parts.append(f'<section class="print-sec">{heading}')
+        else:
+            parts.append(heading)
+
+    def _close_sec(level=2):
+        if level == 2:
+            parts.append("</section>")
+
+    _sec("Resumen ejecutivo")
+    kev_html = ""
+    if C["kev"]:
+        kev_html = (f'<div class="callout warn"><b>Atención:</b> {C["kev"]} dependencia(s) de producción con CVE '
+                    f'en <b>CISA KEV</b> (explotación confirmada in-the-wild). Parchea antes de desplegar.</div>')
+    filtered_html = ""
+    if C["filtered"]:
+        filtered_html = (f'<p>{C["filtered"]} de {len(findings)} hallazgo(s) fueron descartados por el triage '
+                         f'(duplicados o refutados tras análisis) — quedan {max(len(findings)-C["filtered"],0)} reales.</p>')
+    parts.append(
+        f'<p><b>Veredicto:</b> Riesgo {esc(lvl)} — {esc(vtext)}</p>'
+        f'<table><tbody>'
+        f'<tr><td>Hallazgos totales</td><td>{len(findings)}</td></tr>'
+        f'<tr><td>Cerrados</td><td>{C["closed"]}</td></tr>'
+        f'<tr><td>Corregidos</td><td>{C["fixed"]}</td></tr>'
+        f'<tr><td>En CISA KEV</td><td>{C["kev"]}</td></tr>'
+        f'</tbody></table>{kev_html}{filtered_html}'
+    )
+    _close_sec()
+
+    if mode == "technical":
+        asf = L.get("attack_surface") or {}
+        if asf:
+            _sec("Superficie de ataque")
+            for label, key in [("Entrypoints", "entrypoints"), ("Trust boundaries", "trust_boundaries"),
+                                ("Zonas de alto riesgo", "high_risk_zones")]:
+                v = asf.get(key)
+                if isinstance(v, (list, tuple)) and v:
+                    items = "".join(f"<li><code>{esc(i)}</code></li>" for i in v)
+                    parts.append(f"<h3 class='subsec'>{esc(label)}</h3><ul>{items}</ul>")
+            _close_sec()
+
+        _sec("Hallazgos")
+        parts.append(_print_findings_table_html(findings, "technical"))
+        _close_sec()
+
+        _sec("Diagnóstico por hallazgo")
+        for f in sorted_findings(findings):
+            parts.append(_print_finding_block_html(f))
+        _close_sec()
+
+        _sec("Plan de remediación")
+        parts.append(_print_action_plan_html(findings))
+        _close_sec()
+
+        applied = [f for f in findings if (f.get("fix") or {}).get("applied")]
+        if applied or any(f.get("verification") for f in findings):
+            _sec("Resultados")
+            if applied:
+                parts.append("<h3 class='subsec'>Fixes aplicados</h3>")
+                rows = "".join(
+                    f"<tr><td><code>{esc(f.get('id'))}</code></td><td>{esc(joinlist((f.get('fix') or {}).get('files_touched')))}</td>"
+                    f"<td>{esc((f.get('fix') or {}).get('root_cause','—'))}</td></tr>" for f in applied
+                )
+                parts.append(f"<table><thead><tr><th>ID</th><th>Archivos</th><th>Causa raíz</th></tr></thead><tbody>{rows}</tbody></table>")
+            safe = [f for f in findings if isinstance(f, dict) and (is_truly_closed(f) or is_filtered(f))]
+            parts.append("<h3 class='subsec'>Qué está seguro</h3>")
+            if safe:
+                items = "".join(
+                    f"<li><code>{esc(f.get('id'))}</code> {esc(f.get('title',''))} — "
+                    f"{esc((f.get('triage') or {}).get('rationale') or (f.get('verification') or {}).get('verdict') or STATUS_LABEL.get(f.get('status'), f.get('status')))}</li>"
+                    for f in safe
+                )
+                parts.append(f"<ul>{items}</ul>")
+            else:
+                parts.append("<p><em>(sin elementos verificados como cerrados/filtrados todavía)</em></p>")
+            _close_sec()
+
+        _sec("Glosario")
+        parts.append(_print_glossary_html())
+        _close_sec()
+    else:
+        # ejecutivo: detalle completo solo P0/P1/KEV, el resto en tabla-resumen
+        top = [f for f in sorted_findings(findings) if isinstance(f, dict)
+               and (prio_of(f) in ("P0", "P1") or (f.get("intel") or {}).get("in_cisa_kev"))]
+        rest = [f for f in sorted_findings(findings) if f not in top]
+
+        _sec("Plan de acción")
+        parts.append(_print_action_plan_html(findings))
+        _close_sec()
+
+        _sec("Casos prioritarios")
+        if top:
+            for f in top:
+                parts.append(_print_finding_block_html(f))
+        else:
+            parts.append("<p><em>Sin hallazgos P0/P1/KEV en esta corrida.</em></p>")
+        if rest:
+            parts.append(f"<h3 class='subsec'>Resto de hallazgos ({len(rest)})</h3>")
+            parts.append(_print_findings_table_html(rest, "executive"))
+        _close_sec()
+
+    toc_html = _print_toc_html(toc_entries)
+    cover_html = _print_cover_html(L, mode, doc_title)
+    return (f"<!doctype html><html lang='es'><head><meta charset='UTF-8'>"
+            f"<title>{esc(doc_title)}</title><style>{_print_css(esc(doc_title))}</style></head>"
+            f"<body>{cover_html}{toc_html}{''.join(parts)}</body></html>")
+
+
+def try_formal_pdf(html_path, pdf_path):
+    """Como try_pdf(), pero para el documento formal: PREFIERE weasyprint
+    (motor de paginado real, soporta target-counter()/@page margin boxes que
+    el documento usa para el indice y el encabezado/pie) en vez de Chrome
+    (confirmado que headless Chrome ignora ambas features -- el indice
+    quedaria sin numeros de pagina y el encabezado/pie sin contenido)."""
+    apath = os.path.abspath(html_path)
+    ppath = os.path.abspath(pdf_path)
+
+    def _run(cmd):
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+            return os.path.exists(ppath) and os.path.getsize(ppath) > 0
+        except Exception:
+            return False
+
+    if shutil.which("weasyprint") and _run(["weasyprint", apath, ppath]):
+        return "weasyprint"
+    if shutil.which("wkhtmltopdf") and _run(["wkhtmltopdf", "--quiet", apath, ppath]):
+        return "wkhtmltopdf"
+    chrome = _find_chrome()
+    if chrome:
+        url = "file://" + apath
+        if _run([chrome, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", f"--print-to-pdf={ppath}", url]):
+            return os.path.basename(chrome)
+        if _run([chrome, "--headless", "--disable-gpu", f"--print-to-pdf={ppath}", url]):
+            return os.path.basename(chrome)
+    return None
+
+
 # ----------------------------- pdf ------------------------------------------
 def _find_chrome():
     cands = [
@@ -2050,12 +2603,30 @@ def main():
     with open(exec_html_path, "w") as fh:
         fh.write(build_executive_html(L, md_name, exec_pdf_name, tech_html_name))
 
-    tool = try_pdf(html_path, pdf_path)
+    # El PDF NO es un print-to-pdf del dashboard (.html): se genera desde un
+    # documento formal APARTE (portada, indice con paginas reales, paleta
+    # clara — ver build_formal_document_html), escrito a un archivo temporal
+    # que se borra despues de convertir. El .html interactivo (oscuro, JS de
+    # filtrado) es un producto distinto y no cambia.
+    def _render_formal_pdf(mode, pdf_path):
+        formal_html = build_formal_document_html(L, mode=mode)
+        fd, tmp_path = tempfile.mkstemp(prefix=f".vuln-hunter-formal-{mode}-", suffix=".html")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(formal_html)
+            return try_formal_pdf(tmp_path, pdf_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    tool = _render_formal_pdf("technical", pdf_path)
     if tool:
         with open(html_path, "w") as fh:
             fh.write(build_html(md_text, True, md_name, pdf_name, L, mode="technical"))
 
-    tool_exec = try_pdf(exec_html_path, exec_pdf_path)
+    tool_exec = _render_formal_pdf("executive", exec_pdf_path)
     if tool_exec:
         with open(exec_html_path, "w") as fh:
             fh.write(build_executive_html(L, md_name, exec_pdf_name, tech_html_name, has_pdf=True))
@@ -2063,15 +2634,16 @@ def main():
     n = len(L.get("findings", []))
     print(f"vuln-hunter: informe escrito ({n} hallazgos)")
     print(f"  markdown:          {md_path}")
-    print(f"  html (técnico):    {html_path}  (boton 'Descargar PDF' = imprimir a PDF)")
+    print(f"  html (técnico):    {html_path}  (dashboard interactivo, botón 'PDF' descarga el formal de abajo)")
     if tool:
-        print(f"  pdf (técnico):     {pdf_path}  (via {tool})")
+        print(f"  pdf (técnico):     {pdf_path}  (documento formal — portada/índice/paleta clara, via {tool})")
     else:
         print("  pdf (técnico):     no se generó (sin weasyprint/wkhtmltopdf/Chrome). "
-              "Abre el HTML y usa 'Descargar PDF' (Cmd/Ctrl+P → Guardar como PDF).")
+              "Abre el HTML y usa 'Descargar PDF' (Cmd/Ctrl+P → Guardar como PDF) como alternativa manual "
+              "(esa imprime el dashboard oscuro, no el documento formal).")
     print(f"  html (ejecutivo):  {exec_html_path}")
     if tool_exec:
-        print(f"  pdf (ejecutivo):   {exec_pdf_path}  (via {tool_exec})")
+        print(f"  pdf (ejecutivo):   {exec_pdf_path}  (documento formal, via {tool_exec})")
     else:
         print("  pdf (ejecutivo):   no se generó (sin weasyprint/wkhtmltopdf/Chrome).")
     return 0
