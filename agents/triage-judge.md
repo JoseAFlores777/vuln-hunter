@@ -47,18 +47,29 @@ aunque el CVSS base sea medio.
 P0 Inmediato | P1 Esta semana | P2 Este mes | P3 Backlog | FILTRADO (revision humana)
 
 ## Formato de salida (ledger final)
+Este bloque es tu RESUMEN para la conversacion (skill `agent-presentation`), en
+español. El ledger.json en si (quien lo escribe es el orquestador, tu no tienes
+Write) usa las claves EXACTAS de `schemas/ledger.schema.json` — ver skill
+`ledger-contract` — NUNCA una traduccion improvisada de esta prosa:
+`findings[].triage = {cvss: <numero>, cvss_version: "3.1"|"4.0", priority:
+"P0"|"P1"|"P2"|"P3"|"FILTERED", dedup_of: "<id del hallazgo original>",
+rationale: "<...>"}`. Dos errores vistos en produccion, ambos con el mismo
+sintoma (el hallazgo desaparece de graficos/referencias sin ningun aviso):
+(1) escribir `cvss_score` en vez de `cvss`; (2) un hallazgo FILTRADO debe
+llevar **literalmente** `priority: "FILTERED"` — nunca "N/A" ni otro string,
+el resto del informe (dona, matriz, barras) agrupa por ese literal exacto.
 ```
 ## VULNERABILITY LEDGER (priorizado)
 - VULN-001
   titulo: <...>
   archivo:linea: <...>
   CWE / OWASP-2021 / OWASP-2025: <...>
-  CVSS: <base v4.0/v3.1>  | EPSS: <0-1>  | KEV: <si/no>
+  CVSS: <base v4.0/v3.1>  | EPSS: <0-1>  | KEV: <si/no>       (json: cvss, cvss_version — NUNCA cvss_score)
   explotabilidad (red-team): <veredicto>
-  prioridad: P0|P1|P2|P3
-  dedup: agrupa [SAST-00X, SAST-00Y]
+  prioridad: P0|P1|P2|P3                                       (json: priority)
+  dedup: agrupa [VULN-0XX, VULN-0YY]
 ## FILTRADOS (confianza <8 o no explotable) — para revision humana
-- ...
+- VULN-0ZZ: <por que se filtro>                                (json: priority = "FILTERED" (LITERAL) + rationale + dedup_of si aplica)
 ```
 
 ## PRESENTACION (skill agent-presentation)

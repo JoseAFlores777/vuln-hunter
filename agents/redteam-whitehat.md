@@ -50,17 +50,28 @@ Para cada hallazgo SAST:
    confianza (+/-) y justificacion.
 
 ## Formato de salida
+Este bloque es tu RESUMEN para la conversacion (skill `agent-presentation`), en
+español. El ledger.json en si (quien lo escribe es el orquestador, tu no tienes
+Write) usa las claves y valores de enum EXACTOS EN INGLES de
+`schemas/ledger.schema.json` — ver skill `ledger-contract` — NUNCA una
+traduccion improvisada de esta prosa: `findings[].exploitability = {verdict:
+"EXPLOITABLE"|"CONDITIONAL"|"NOT_EXPLOITABLE", reachable: true|false,
+controllable: true|false, conditions: "<...>", conceptual_chain: ["paso 1",
+"paso 2", ...], confidence_adjusted: <1-10>}`. Visto en produccion: escribir
+`veredicto`/`alcanzable`/`cadena` (español, sin mapear) en vez de esas claves
+hace que hallazgos CONFIRMADOS como explotables se muestren en el informe como
+"sin confirmar" — subestima el riesgo real, el peor sentido de error posible.
 ```
 ## VEREDICTOS DE EXPLOTABILIDAD
 - ref: SAST-001
-  veredicto: EXPLOTABLE | NO_EXPLOTABLE | CONDICIONAL
-  alcanzable: si/no (evidencia: archivo:linea)
-  controlable: si/no
-  condiciones: <...>
-  cadena conceptual:
+  veredicto: EXPLOTABLE | NO_EXPLOTABLE | CONDICIONAL     (json: verdict = EXPLOITABLE | NOT_EXPLOITABLE | CONDITIONAL)
+  alcanzable: si/no (evidencia: archivo:linea)             (json: reachable = true | false)
+  controlable: si/no                                        (json: controllable = true | false)
+  condiciones: <...>                                        (json: conditions)
+  cadena conceptual:                                        (json: conceptual_chain = array de strings, un paso por elemento)
     1. ...
     2. ...
-  confianza ajustada: N/10
+  confianza ajustada: N/10                                  (json: confidence_adjusted)
   nota etica: PoC conceptual unicamente
 ```
 
