@@ -36,6 +36,13 @@ Re-escanea SOLO el subarbol **$ARGUMENTS** con el subagente **sast-analyst**
 Usa `ledger.py under .vuln-hunter/ledger.json $ARGUMENTS` para saber que findings
 habia en ese path ANTES del rescan y poder comparar.
 
+Los findings nuevos nacen con el id de recoleccion del sast-analyst (`VULN-1xx`),
+no uno canonico. En cuanto termines de fusionar, canonicaliza otra vez (mismo
+comando de "Retrocompatibilidad" de arriba, es idempotente):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+```
+
 ## Eventos de actividad (panel)
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py stage:start stage=SAST agent=sast-analyst

@@ -58,24 +58,41 @@ Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
   defecto el panel se abre solo al inicio (ver Paso 0).
 
 ## Orquestacion (subagentes via Task, en orden)
-1. **recon-cartographer** -> escribe `attack_surface` en el ledger (bloquea).
+1. **recon-cartographer** -> escribe `attack_surface` en el ledger (bloquea); si
+   detecta zonas de alto riesgo crea findings tipo `recon` (`VULN-9xx`).
+   Inmediatamente despues de que escriba, CANONICALIZA (ver nota abajo):
+   ```
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+   ```
 2. En paralelo:
    - **sast-analyst** -> SAST de CODIGO propio -> `findings[].sast` (VULN-1xx).
    - **threat-intel-scout** -> SCA de DEPENDENCIAS de produccion, cruce con
      OSV/NVD/KEV/EPSS -> `findings[].intel` (VULN-2xx). Marca bloqueantes de deploy.
+   Cuando ambos terminen, CANONICALIZA de nuevo (mismo comando de arriba) antes
+   de mostrar el dashboard/panel — asi el panel EN VIVO nunca muestra ids de
+   recoleccion (`VULN-101`, `VULN-901`...) en la tabla de hallazgos, ni siquiera
+   a mitad de corrida.
 3. **redteam-whitehat** -> confirma explotabilidad (PoC conceptual) -> `exploitability`.
+   No crea findings nuevos (solo enriquece existentes): no hace falta canonicalizar aqui.
 4. **triage-judge** -> consolida, deduplica, prioriza (CVSS+EPSS+KEV) -> `triage`.
    Si hay un CVE en KEV en dependencia de produccion, escribe el motivo en
    `.vuln-hunter/deploy-blocked` (lo consume el gate del hook).
-   Inmediatamente despues, CANONICALIZA los ids (los de recoleccion `VULN-1xx`/
-   `VULN-2xx` confunden, no son crecientes) — es el mismo `migrate` de la
-   seccion "Reanudacion" de arriba, retrocompatible con auditorias corridas en
-   una version anterior del plugin:
+   Inmediatamente despues, CANONICALIZA otra vez (por si el triage o el fixer al
+   vuelo agregaron algun finding tardio):
    ```
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
    ```
    De aqui en adelante (plan, gate, fix, patch, verify, informe) usa SIEMPRE los
    ids ya canonicalizados (`VULN-001`, `VULN-002`...).
+
+> **Por que canonicalizar en cada paso y no solo al final:** `ledger.py migrate`
+> (skill `ledger-contract`) es determinista, idempotente e INCREMENTAL — a un
+> finding ya canonico (con `origin_id`) no lo toca, y a los nuevos les asigna el
+> siguiente `VULN-0NN` libre. Correrlo varias veces durante el run no tiene
+> costo ni riesgo (es el mismo comando de "Reanudacion" de arriba); el beneficio
+> es que el panel vivo y el dashboard de texto SIEMPRE muestran ids crecientes,
+> nunca los rangos de recoleccion internos. Tambien lo corren `/vuln-hunter:scan`
+> y `/vuln-hunter:watch` si el usuario los invoca sueltos (sin pasar por `/hunt`).
 5. **PLAN** (`/vuln-hunter:plan`) -> plan de remediacion (superpowers si esta;
    si no, plan propio). Guarda `plan_ref`.
 6. Si NO es dry-run NI solo-deteccion:

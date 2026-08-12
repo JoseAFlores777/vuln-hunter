@@ -81,11 +81,12 @@ Estos rangos existen unicamente para que sast-analyst y threat-intel-scout (que
 corren EN PARALELO, ver `/vuln-hunter:hunt` paso 2) puedan asignar ids sin
 coordinarse y sin chocar. NO son el id final que ve el usuario.
 
-## Canonicalizacion de ids (automatica via migrate; obligatoria al consolidar el triage)
+## Canonicalizacion de ids (automatica via migrate; en CADA etapa que agrega findings)
 `VULN-101`, `VULN-209`, etc. son ids internos de recoleccion — confunden en el
-informe (no son crecientes, no dicen nada del orden real). `ledger.py migrate`
-ya los reasigna a `id` = `VULN-001`, `VULN-002`, `VULN-003`... crecientes desde
-1, en el orden real de descubrimiento (por el numero del id de recoleccion). El
+informe y en el panel EN VIVO (no son crecientes, no dicen nada del orden real).
+`ledger.py migrate` ya los reasigna a `id` = `VULN-001`, `VULN-002`, `VULN-003`...
+crecientes desde 1, en el orden en que se llamo `migrate` (que en el flujo normal
+coincide con el orden real de descubrimiento: recon -> SAST/SCA -> triage). El
 id viejo NO se pierde: queda en `origin_id` para trazabilidad. Es idempotente e
 incremental: findings ya canonicos (con `origin_id`) no se tocan, y findings
 nuevos (p.ej. un SCA creado al vuelo por appsec-fixer al bump-ear una
@@ -93,9 +94,16 @@ dependencia) se numeran a continuacion de la secuencia existente. Si un finding
 tenia `triage.dedup_of` apuntando al id viejo de otro finding renumerado, se
 actualiza esa referencia al id nuevo.
 
-Aunque `migrate` ya lo hace, en cuanto el **triage-judge** consolida y escribe
-`findings[].triage`, el orquestador corre explicitamente (determinista, sin LLM
-— no le pidas al agente que renumere a mano; `renumber` es un alias de
+**No esperes al triage para canonicalizar.** `/vuln-hunter:hunt` corre `migrate`
+tras CADA etapa que puede agregar findings (recon, SAST+SCA, triage — ver ese
+comando), y `/vuln-hunter:scan`, `/vuln-hunter:watch` y `/vuln-hunter:rescan` lo
+corren tambien al terminar, por si el usuario los invoca sueltos. Asi el panel
+vivo (tabla de hallazgos) y el dashboard de texto NUNCA muestran un id de
+recoleccion sin canonicalizar, ni siquiera a mitad de una corrida larga.
+
+Ademas, en cuanto el **triage-judge** consolida y escribe `findings[].triage`,
+el orquestador corre explicitamente (determinista, sin LLM — no le pidas al
+agente que renumere a mano; `renumber` es un alias de
 `migrate`, mismo resultado, mensaje mas claro en ese punto del flujo):
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json

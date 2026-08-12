@@ -57,3 +57,13 @@ Por cada finding NUEVO agregado al ledger:
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/activity.py finding:new id=<VULN-2xx> title="<titulo>" source=sca
 ```
+
+## Canonicaliza los ids (antes del `stage:end`)
+`VULN-2xx` es el rango interno de recoleccion, no el id final (ver skill
+`ledger-contract`). En cuanto el threat-intel-scout termine de escribir sus
+findings, corre (determinista, idempotente):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+```
+Asi el panel y el dashboard muestran `VULN-001`, `VULN-002`... desde ya, aunque
+`/vuln-hunter:watch` se corra suelto (sin pasar por `/hunt`).
