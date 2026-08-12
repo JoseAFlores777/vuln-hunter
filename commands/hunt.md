@@ -67,6 +67,15 @@ Si no existe ledger, es un run nuevo: sigue el flujo completo de abajo.
 4. **triage-judge** -> consolida, deduplica, prioriza (CVSS+EPSS+KEV) -> `triage`.
    Si hay un CVE en KEV en dependencia de produccion, escribe el motivo en
    `.vuln-hunter/deploy-blocked` (lo consume el gate del hook).
+   Inmediatamente despues, CANONICALIZA los ids (los de recoleccion `VULN-1xx`/
+   `VULN-2xx` confunden, no son crecientes) — es el mismo `migrate` de la
+   seccion "Reanudacion" de arriba, retrocompatible con auditorias corridas en
+   una version anterior del plugin:
+   ```
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+   ```
+   De aqui en adelante (plan, gate, fix, patch, verify, informe) usa SIEMPRE los
+   ids ya canonicalizados (`VULN-001`, `VULN-002`...).
 5. **PLAN** (`/vuln-hunter:plan`) -> plan de remediacion (superpowers si esta;
    si no, plan propio). Guarda `plan_ref`.
 6. Si NO es dry-run NI solo-deteccion:
@@ -98,10 +107,14 @@ GENERA el informe formal automaticamente — no esperes a que el usuario lo pida
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/report.py .vuln-hunter/ledger.json .vuln-hunter/audit-report
 ```
-Esto escribe `.vuln-hunter/audit-report.md`, `.html` y (si hay convertidor) `.pdf`,
-con las 3 secciones: auditoria/diagnostico, estrategia/plan y resultados. Luego
-dile al usuario que puede **descargarlo desde el panel** (boton "Informe") o abrir
-`.vuln-hunter/audit-report.html` y usar "Descargar PDF".
+Esto escribe cinco artefactos: `.vuln-hunter/audit-report.md` (fuente), la
+version TECNICA `.html`/`.pdf` (si hay convertidor) con las 3 secciones
+completas (auditoria/diagnostico, estrategia/plan y resultados), y la version
+EJECUTIVA condensada `audit-report-executive.html`/`.pdf` (veredicto, KPIs,
+graficos y solo los hallazgos de mayor riesgo, con enlace a la tecnica). Luego
+dile al usuario que puede **descargarlo desde el panel** (botones "Informe" y
+"Resumen ejecutivo") o abrir `.vuln-hunter/audit-report.html` /
+`audit-report-executive.html` y usar "Descargar PDF".
 
 ## Visualizacion entre pasos (importante para la UX)
 Tras CADA agente del flujo, muestra el dashboard de estado para que el usuario

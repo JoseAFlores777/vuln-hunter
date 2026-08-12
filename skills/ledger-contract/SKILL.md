@@ -31,13 +31,22 @@ al finding existente por su id. NUNCA dupliques un finding ni renumeres.
 
 ## Versionado y retrocompatibilidad
 El ledger lleva `schema_version`. La version actual es **1.2** (añade el status
-`fixing` y el evento de actividad `finding:state`). Un run nuevo debe
-ser RETROCOMPATIBLE con ledgers de versiones anteriores: antes de leer/escribir,
-migra con el helper determinista (sube `schema_version`, rellena defaults y
-preserva todos los findings y su estado, idempotente):
+`fixing`, el evento de actividad `finding:state`, y la canonicalizacion de ids
+— ver abajo). Un run nuevo debe ser RETROCOMPATIBLE con ledgers de versiones
+anteriores: antes de leer/escribir, migra con el helper determinista (sube
+`schema_version`, rellena defaults, CANONICALIZA ids de recoleccion a
+VULN-001/002/003... y preserva todos los findings y su estado; idempotente):
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
 ```
+Esto es lo que hace retrocompatible el cambio a ids crecientes: si actualizas el
+plugin en un repo que YA corrio una auditoria (ledger con `VULN-101`, `VULN-209`
+sin canonicalizar), no hace falta ningun paso manual — `migrate` ya se corria en
+cada comando que toca un ledger existente (`/vuln-hunter:hunt`, `:resume`,
+`:rescan`) y ahora, ademas de subir el schema, tambien renumera. `report.py`
+tambien lo llama internamente y re-escribe el ledger si algo cambio, asi que con
+solo pedir `/vuln-hunter:report` sobre una auditoria vieja, el ledger en disco
+queda canonicalizado.
 Para saber por donde iba un run anterior (continuidad), usa:
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py resume .vuln-hunter/ledger.json
@@ -64,9 +73,40 @@ Si `.vuln-hunter/ledger.json` no existe, crea el esqueleto (o, mejor, corre
   rangos de id distintos (SAST-/INTEL-) y el orquestador los fusiona; evita
   escrituras concurrentes al mismo archivo.
 
-## Mapeo de id por fuente (para evitar colisiones)
+## Mapeo de id por fuente (para evitar colisiones) — SOLO durante la recoleccion
 - SAST de codigo: `VULN-1xx`
 - SCA/threat-intel: `VULN-2xx`
 - recon (zonas): `VULN-9xx`
-El triage puede renombrar a VULN-001.. al consolidar, registrando el origen en
-`dedup_of`.
+Estos rangos existen unicamente para que sast-analyst y threat-intel-scout (que
+corren EN PARALELO, ver `/vuln-hunter:hunt` paso 2) puedan asignar ids sin
+coordinarse y sin chocar. NO son el id final que ve el usuario.
+
+## Canonicalizacion de ids (automatica via migrate; obligatoria al consolidar el triage)
+`VULN-101`, `VULN-209`, etc. son ids internos de recoleccion — confunden en el
+informe (no son crecientes, no dicen nada del orden real). `ledger.py migrate`
+ya los reasigna a `id` = `VULN-001`, `VULN-002`, `VULN-003`... crecientes desde
+1, en el orden real de descubrimiento (por el numero del id de recoleccion). El
+id viejo NO se pierde: queda en `origin_id` para trazabilidad. Es idempotente e
+incremental: findings ya canonicos (con `origin_id`) no se tocan, y findings
+nuevos (p.ej. un SCA creado al vuelo por appsec-fixer al bump-ear una
+dependencia) se numeran a continuacion de la secuencia existente. Si un finding
+tenia `triage.dedup_of` apuntando al id viejo de otro finding renumerado, se
+actualiza esa referencia al id nuevo.
+
+Aunque `migrate` ya lo hace, en cuanto el **triage-judge** consolida y escribe
+`findings[].triage`, el orquestador corre explicitamente (determinista, sin LLM
+— no le pidas al agente que renumere a mano; `renumber` es un alias de
+`migrate`, mismo resultado, mensaje mas claro en ese punto del flujo):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json
+```
+para garantizar que TODO lo consolidado en este paso (incluidos findings que
+llegaron de SAST/threat-intel despues de la ultima migracion) quede canonico
+antes del plan/gate/fix.
+
+Nota honesta: `activity.jsonl` es un log append-only (nunca se reescribe), asi
+que las lineas ya escritas ANTES de renumerar conservan el id de recoleccion que
+tenian en ese instante (p.ej. `finding:new id=VULN-101 ...`). El panel las sigue
+mostrando; solo pierden el chip de severidad/KEV enriquecido si el id ya no
+matchea contra el ledger (cosmetico, no rompe nada — los comandos que copia el
+panel usan siempre el id ACTUAL del ledger).

@@ -127,7 +127,10 @@ def main(argv):
     if os.path.exists(activity_path):
         shutil.copy2(activity_path, os.path.join(run_dir, "activity.jsonl"))
     # informes asociados, si existen junto al ledger
-    for name in ("audit-report.md", "audit-report.html", "audit-report.pdf"):
+    for name in (
+        "audit-report.md", "audit-report.html", "audit-report.pdf",
+        "audit-report-executive.html", "audit-report-executive.pdf",
+    ):
         src = os.path.join(state_dir, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(run_dir, name))

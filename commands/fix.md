@@ -22,6 +22,12 @@ El fixer solo toca lo atado a un VULN-id del plan. Un bump de dependencia exige 
 finding SCA; si falta, el fixer invoca threat-intel-scout al vuelo en vez de subir
 la dep en silencio. Nada se cambia sin un hallazgo que lo explique.
 
+Si se creo un finding nuevo al vuelo, ese finding SIEMPRE nace con un id de
+recoleccion (`VULN-2xx`, ver skill `ledger-contract`), no uno canonico: corre de
+nuevo `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ledger.py migrate .vuln-hunter/ledger.json`
+antes de seguir (es incremental — no toca los ids ya canonicalizados, solo le
+asigna el siguiente `VULN-0NN` libre al finding nuevo).
+
 ## Presentacion
 El agente presenta su resultado con el skill `agent-presentation` (cabecera con
 icono, resumen de 3 lineas, tabla con emoji-semaforo, barra de progreso) y cierra

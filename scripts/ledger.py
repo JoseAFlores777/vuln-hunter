@@ -12,14 +12,23 @@ retrocompatible con el ledger de una version anterior y reanude donde quedo:
    etapas ya estan hechas y cual es el siguiente comando de la cadena.
 3) findings_under(ledger, path): lista los findings cuyo `location` cae dentro de
    un subarbol (para /vuln-hunter:rescan <path>).
+4) renumber(ledger): canonicaliza los ids de recoleccion (VULN-1xx SAST / VULN-2xx
+   SCA / VULN-9xx recon — necesarios para que sast-analyst y threat-intel-scout
+   escriban en paralelo sin chocar de id, ver skill ledger-contract) a
+   VULN-001, VULN-002... crecientes, en el orden en que se descubrieron. El id
+   de recoleccion NO se pierde: queda en `origin_id`. Pensado para que el
+   triage-judge lo corra al consolidar (el humano nunca deberia leer "VULN-209"
+   en el informe).
 
 Uso CLI:
-    python3 scripts/ledger.py migrate <ledger.json>   # migra EN SITIO (escribe)
-    python3 scripts/ledger.py resume  <ledger.json>    # imprime punto de reanudacion
-    python3 scripts/ledger.py under   <ledger.json> <path>
+    python3 scripts/ledger.py migrate  <ledger.json>   # migra EN SITIO (escribe)
+    python3 scripts/ledger.py resume   <ledger.json>    # imprime punto de reanudacion
+    python3 scripts/ledger.py under    <ledger.json> <path>
+    python3 scripts/ledger.py renumber <ledger.json>   # canonicaliza ids EN SITIO
 """
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -92,7 +101,16 @@ STAGE_DONE = [
 def migrate(ledger):
     """Sube el ledger al schema actual sin perder datos. Idempotente.
     PURGA entradas de findings que no sean objetos (un ledger envenenado con
-    strings/numeros en `findings` haria crashear a todos los consumidores)."""
+    strings/numeros en `findings` haria crashear a todos los consumidores).
+
+    Tambien CANONICALIZA los ids (VULN-101/VULN-209 -> VULN-001/VULN-002...,
+    ver renumber()). Esto es lo que hace que la version con ids crecientes sea
+    retrocompatible: `migrate` ya se corria en cada comando que toca un ledger
+    existente (hunt/resume/rescan, y el propio CLI de este script para
+    migrate/resume/under), asi que un repo que actualiza el plugin y ya tenia
+    una auditoria corrida en un schema anterior queda con ids canonicos en
+    cuanto se vuelve a tocar el ledger — sin que el usuario tenga que saber que
+    `renumber` existe ni correrlo a mano."""
     if not isinstance(ledger, dict):
         ledger = {}
     if not isinstance(ledger.get("run"), dict):
@@ -105,6 +123,7 @@ def migrate(ledger):
         f.setdefault("status", DEFAULT_STATUS)
     ledger["findings"] = clean
     ledger["schema_version"] = CURRENT_SCHEMA
+    ledger = renumber(ledger)
     return ledger
 
 
@@ -138,6 +157,59 @@ def findings_under(ledger, path):
     return out
 
 
+_CANON_ID_RE = re.compile(r"^VULN-\d+$")
+_TRAILING_NUM_RE = re.compile(r"(\d+)$")
+
+
+def renumber(ledger):
+    """Reasigna `id` a VULN-001, VULN-002... crecientes (sin saltos tipo 101/209
+    que confunden al leer el informe). Determinista, sin LLM: el orden es el
+    numero del id de RECOLECCION (VULN-1xx/2xx/9xx = orden real de descubrimiento
+    dentro del run, ver skill ledger-contract), no la prioridad de triage (que
+    puede variar entre corridas). Idempotente e incremental:
+    - Un finding con `origin_id` ya es canonico -> se deja tal cual, y su numero
+      cuenta para no repetirse.
+    - Un finding SIN `origin_id` es nuevo (recien creado por sast-analyst,
+      threat-intel-scout, o al vuelo por appsec-fixer) -> se le asigna el
+      siguiente numero libre, seguido de continuar la secuencia.
+    El id original queda en `origin_id` (nunca se pierde, para trazabilidad con
+    activity.jsonl: las lineas de log ya escritas con el id de recoleccion no se
+    reescriben — es un log append-only — asi que conservan el id que tenian en
+    ese instante). Si `triage.dedup_of` apuntaba al id viejo de un finding que se
+    esta renumerando, se actualiza al nuevo id."""
+    findings = [f for f in ledger.get("findings", []) if isinstance(f, dict)]
+
+    max_n = 0
+    for f in findings:
+        if f.get("origin_id") and _CANON_ID_RE.match(f.get("id") or ""):
+            max_n = max(max_n, int(f["id"].split("-", 1)[1]))
+
+    pending = [f for f in findings if not f.get("origin_id")]
+
+    def _discovery_key(f):
+        m = _TRAILING_NUM_RE.search(f.get("id") or "")
+        return (int(m.group(1)) if m else 0, f.get("id") or "")
+
+    pending.sort(key=_discovery_key)
+
+    remap = {}
+    for f in pending:
+        max_n += 1
+        old_id = f.get("id")
+        new_id = f"VULN-{max_n:03d}"
+        remap[old_id] = new_id
+        f["origin_id"] = old_id
+        f["id"] = new_id
+
+    if remap:
+        for f in findings:
+            tri = f.get("triage")
+            if isinstance(tri, dict) and tri.get("dedup_of") in remap:
+                tri["dedup_of"] = remap[tri["dedup_of"]]
+
+    return ledger
+
+
 def _load(path):
     with open(path) as fh:
         return json.load(fh)
@@ -145,17 +217,29 @@ def _load(path):
 
 def main(argv):
     if len(argv) < 3:
-        print("uso: ledger.py <migrate|resume|under> <ledger.json> [path]", file=sys.stderr)
+        print("uso: ledger.py <migrate|resume|under|renumber> <ledger.json> [path]", file=sys.stderr)
         return 2
     cmd, path = argv[1], argv[2]
     if not os.path.exists(path):
         print(f"vuln-hunter ledger: no existe {path}", file=sys.stderr)
         return 1
-    ledger = migrate(_load(path))
+    raw = _load(path)
+    before_ids = {f.get("id") for f in raw.get("findings", []) if isinstance(f, dict)}
+    ledger = migrate(raw)  # migrate() ya canonicaliza ids (renumber) — ver su docstring
 
-    if cmd == "migrate":
+    # 'renumber' es un alias explicito de 'migrate' para cuando lo que se quiere
+    # comunicar es "canonicaliza los ids" (p.ej. desde commands/triage.md tras
+    # consolidar): ambos hacen exactamente lo mismo, solo cambia el mensaje.
+    if cmd in ("migrate", "renumber"):
         atomic_write_json(path, ledger)
-        print(f"vuln-hunter ledger: migrado a schema {CURRENT_SCHEMA} ({len(ledger['findings'])} findings)")
+        after_ids = [f.get("id") for f in ledger["findings"] if isinstance(f, dict)]
+        renumbered = len(before_ids - set(after_ids))
+        if cmd == "renumber" or renumbered:
+            highest = max(after_ids, key=lambda i: int(i.split("-", 1)[1]) if _CANON_ID_RE.match(i or "") else -1, default="—")
+            print(f"vuln-hunter ledger: {renumbered} id(s) canonicalizados ({len(after_ids)} findings, "
+                  f"el ultimo es {highest})")
+        else:
+            print(f"vuln-hunter ledger: migrado a schema {CURRENT_SCHEMA} ({len(after_ids)} findings)")
         return 0
     if cmd == "resume":
         print(json.dumps(resume_point(ledger), ensure_ascii=False, indent=2))

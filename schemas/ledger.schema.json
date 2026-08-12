@@ -33,7 +33,8 @@
         "type": "object",
         "required": ["id", "source", "title", "status"],
         "properties": {
-          "id": { "type": "string", "description": "p.ej. VULN-001" },
+          "id": { "type": "string", "description": "id canonico creciente p.ej. VULN-001, asignado por `ledger.py renumber` al consolidar el triage" },
+          "origin_id": { "type": "string", "description": "id de recoleccion original antes de renumerar (VULN-1xx SAST / VULN-2xx SCA / VULN-9xx recon). Ausente si el finding aun no paso por renumber." },
           "source": { "type": "string", "enum": ["sast", "sca", "threat-intel", "recon"] },
           "title": { "type": "string" },
           "location": { "type": "string", "description": "archivo:linea, o paquete@version para SCA/threat-intel" },

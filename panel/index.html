@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-Q7fYP8LKgre3G7kUNlMOw3YAj/hmk0+08qoPM7gmnfA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://unpkg.com 'sha256-qGEl1sd3Z79a1ijxvfS6zMBDvQrYHeRivvB9VHZxEX8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="color-scheme" content="dark" />
 <title>vuln-hunter // panel vivo</title>
@@ -797,7 +797,18 @@ function ActionsBar({
     className: "dl",
     href: "audit-report.md",
     download: true
-  }, "\u2B07 Markdown")));
+  }, "\u2B07 Markdown"), /*#__PURE__*/React.createElement("span", {
+    className: "dl-l"
+  }, "Resumen ejecutivo"), /*#__PURE__*/React.createElement("a", {
+    className: "dl",
+    href: "audit-report-executive.html",
+    target: "_blank",
+    rel: "noopener noreferrer"
+  }, "\uD83D\uDCC4 Abrir \xB7 imprimir PDF"), /*#__PURE__*/React.createElement("a", {
+    className: "dl",
+    href: "audit-report-executive.pdf",
+    download: true
+  }, "\u2B07 PDF")));
 }
 
 // Track visual del ciclo de vida: Encontrado -> Mitigando -> Arreglado.

@@ -205,6 +205,9 @@ function ActionsBar({ledger,findings,runDone}){
           <a className="dl" href="audit-report.html" target="_blank" rel="noopener noreferrer">📄 Abrir · imprimir PDF</a>
           <a className="dl" href="audit-report.pdf" download>⬇ PDF</a>
           <a className="dl" href="audit-report.md" download>⬇ Markdown</a>
+          <span className="dl-l">Resumen ejecutivo</span>
+          <a className="dl" href="audit-report-executive.html" target="_blank" rel="noopener noreferrer">📄 Abrir · imprimir PDF</a>
+          <a className="dl" href="audit-report-executive.pdf" download>⬇ PDF</a>
         </div>
       )}
     </div>

@@ -3,36 +3,62 @@
 vuln-hunter :: report.py
 Genera el informe FORMAL de auditoria a partir de .vuln-hunter/ledger.json.
 
-Determinista y reproducible (no depende del LLM). Produce tres artefactos con el
-mismo contenido en tres formatos, listos para descargar desde el panel:
+Determinista y reproducible (no depende del LLM). Produce CINCO artefactos,
+listos para descargar desde el panel:
 
-    <base>.md     informe en Markdown (3 secciones: auditoria, plan, resultados)
-    <base>.html   informe imprimible (boton "Descargar PDF" -> imprimir a PDF)
-    <base>.pdf    solo si hay un convertidor disponible (weasyprint / wkhtmltopdf
-                  / Chrome|Chromium|Edge headless). Si no, se omite y se usa el
-                  boton del HTML.
+    <base>.md               informe en Markdown (texto plano, fuente de verdad)
+    <base>.html/.pdf         informe TECNICO (detalle diagnostico completo)
+    <base>-executive.html/.pdf  informe EJECUTIVO (veredicto, KPIs, casos top,
+                             plan de accion, con link permanente al tecnico)
 
-Estructura del informe:
+El .html imprimible tiene boton "Descargar PDF" -> imprimir a PDF. El .pdf solo
+se genera si hay un convertidor disponible (weasyprint / wkhtmltopdf / Chrome|
+Chromium|Edge headless); si no, se omite y se usa el boton del HTML.
+
+Estructura del informe (comun a .md y a ambos .html):
     1. Auditoria y diagnostico  (superficie, hallazgos, diagnostico por hallazgo)
     2. Estrategia y plan de remediacion  (plan, enfoque por hallazgo, action plan)
     3. Resultados  (fixes aplicados, verificacion, "que esta seguro", estado)
+
+Identidad visual: el mismo lenguaje HUD/dark del panel vivo (panel/index.html),
+no un tema "paper" generico. Ver HUD (mas abajo) para los tokens de color, y el
+comentario junto a --mono/--hud/--sans para la unica desviacion deliberada
+(fuentes locales, el panel usa Google Fonts pero el informe debe seguir siendo
+100% self-contained/offline).
 
 Uso:
     python3 scripts/report.py [ruta_ledger] [base_o_salida]
 
 `base_o_salida` puede ser una base sin extension (.vuln-hunter/audit-report) o una
-ruta .html/.md (por retrocompat); en ambos casos se generan los tres formatos.
+ruta .html/.md (por retrocompat); en ambos casos se generan los cinco formatos.
 """
 import html
 import json
 import os
+import re as _re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ledger as _ledger  # noqa: E402 — retrocompat: canonicaliza ids de repos ya auditados (ver main())
+
 PRIO_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "FILTERED": 9, "—": 5}
-PRIO_COLOR = {"P0": "#b4532f", "P1": "#c0772f", "P2": "#c89a3c", "P3": "#6b7d5c", "FILTERED": "#8a847a", "—": "#8a847a"}
+
+# Tokens de color HUD: copiados LITERALMENTE de panel/index.html (:root, linea
+# ~19-31) — es la identidad visual ya en produccion del panel, no una paleta
+# nueva. El informe NO inventa colores fuera de este set (regla dura del brief).
+HUD = {
+    "bg": "#070a0f", "bg2": "#0a0e16", "panel": "#0e1420", "panel2": "#111a28",
+    "ink": "#e6edf6", "ink_soft": "#aebacb", "ink_mute": "#6b7889",
+    "line": "rgba(120,160,200,.12)", "line2": "rgba(120,160,200,.22)",
+    "green": "#22c55e", "green_soft": "#4ade80", "cyan": "#22d3ee", "cyan_soft": "#67e8f9",
+    "amber": "#f59e0b", "orange": "#fb923c", "red": "#ef4444", "violet": "#a78bfa",
+}
+
+PRIO_COLOR = {"P0": HUD["red"], "P1": HUD["orange"], "P2": HUD["amber"],
+              "P3": HUD["ink_mute"], "FILTERED": HUD["ink_mute"], "—": HUD["ink_mute"]}
 STATUS_LABEL = {
     "hypothesis": "Hipotesis", "confirmed": "Confirmada", "triaged": "Triada",
     "planned": "Planificada", "fixing": "En proceso",
@@ -92,7 +118,10 @@ def fix_applied_real(f):
 
 
 def sorted_findings(findings):
-    return sorted(findings, key=lambda x: PRIO_ORDER.get(prio_of(x), 5))
+    # Blindado contra entradas no-dict (poison): compute() ya se defendia de esto,
+    # ahora build_html()/build_md() tampoco truenan si el ledger viene corrupto.
+    return sorted((f for f in findings if isinstance(f, dict)),
+                  key=lambda x: PRIO_ORDER.get(prio_of(x), 5))
 
 
 def compute(L):
@@ -141,15 +170,17 @@ def risk_verdict(L):
         bits.append(f"{open_p1} P1 sin cerrar")
     if open_kev:
         bits.append(f"{open_kev} dependencia(s) en CISA KEV → deploy bloqueado")
+    # Colores cambiados de hex "paper" a tokens HUD (paleta dark del panel). Ningun
+    # test fija estos valores, solo el string de nivel (ver TestRiskVerdict).
     if not findings:
-        return ("sin hallazgos", "Sin hallazgos en el ledger. Corre la auditoría para poblarlo.", "#6b7d5c")
+        return ("sin hallazgos", "Sin hallazgos en el ledger. Corre la auditoría para poblarlo.", HUD["green"])
     if not open_f:
-        return ("controlado", f"Todos los hallazgos cerrados o filtrados ({C['closed']}/{len(findings)}). Riesgo bajo control.", "#6b7d5c")
+        return ("controlado", f"Todos los hallazgos cerrados o filtrados ({C['closed']}/{len(findings)}). Riesgo bajo control.", HUD["green"])
     if open_p0 or open_kev:
-        return ("alto", "Riesgo alto: " + " · ".join(bits) + ".", "#b4532f")
+        return ("alto", "Riesgo alto: " + " · ".join(bits) + ".", HUD["red"])
     if open_p1:
-        return ("medio", "Riesgo medio: " + " · ".join(bits) + ".", "#c0772f")
-    return ("moderado", f"{len(open_f)} hallazgo(s) abiertos de prioridad media/baja.", "#c89a3c")
+        return ("medio", "Riesgo medio: " + " · ".join(bits) + ".", HUD["orange"])
+    return ("moderado", f"{len(open_f)} hallazgo(s) abiertos de prioridad media/baja.", HUD["amber"])
 
 
 def action_buckets(findings):
@@ -237,6 +268,9 @@ def build_md(L, ledger_path):
     else:
         o.append("_Sin hallazgos en el ledger._\n")
 
+    # 1.3 se mantiene en formato de bullets (correcto para el .md, un artefacto de
+    # texto plano). build_html() NO reparsea esto: separa (splice) esta seccion del
+    # markdown y la re-renderiza como cards HUD — ver build_finding_cards_section_html().
     o.append("### 1.3 Diagnóstico por hallazgo\n")
     if not findings:
         o.append("_Sin hallazgos._\n")
@@ -259,7 +293,7 @@ def build_md(L, ledger_path):
             if sast.get("hypothesis"):
                 o.append(f"  - Hipótesis: {mdc(sast.get('hypothesis'))}")
             if sast.get("flow"):
-                o.append(f"  - Data-flow: {mdc(joinlist(sast.get('flow'), ' → '))}")
+                o.append(f"  - Data-flow: {mdc(sast.get('flow'))}")
             if sast.get("sarif_ref"):
                 o.append(f"  - Origen SARIF: `{mdc(sast.get('sarif_ref'))}` (trazabilidad exacta a la corrida del escáner)")
         if intel:
@@ -379,7 +413,7 @@ def build_md(L, ledger_path):
     o.append("---\n\n## 4. Glosario\n")
     o.append("Términos para leer este informe sin ser especialista:\n")
     gloss = [
-        ("Hallazgo", "Una vulnerabilidad candidata con un id (p.ej. VULN-101). Acumula el análisis de cada etapa."),
+        ("Hallazgo", "Una vulnerabilidad candidata con un id creciente (p.ej. VULN-001). Acumula el análisis de cada etapa."),
         ("Severidad (P0–P3)", "Prioridad de atención. **P0** = crítico/inmediato; **P3** = bajo. Se calcula con CVSS + EPSS + KEV."),
         ("CVSS", "Puntaje estándar de gravedad técnica de una vulnerabilidad (0–10)."),
         ("EPSS", "Probabilidad (0–1) de que una vulnerabilidad sea explotada en los próximos 30 días."),
@@ -403,7 +437,6 @@ def build_md(L, ledger_path):
 
 
 # ----------------------------- html: toc + charts ---------------------------
-import re as _re
 
 # Siglas -> definicion para tooltips <abbr> en el informe. Que un no-especialista
 # entienda al pasar el cursor, sin salir del documento.
@@ -429,13 +462,48 @@ ACRONYMS = {
 _ACRO_RE = _re.compile(r"\b(" + "|".join(_re.escape(k) for k in sorted(ACRONYMS, key=len, reverse=True)) + r")\b")
 
 
+# Mapea los estados textuales (STATUS_LABEL) sobre los 4 BUCKETS de ciclo de vida
+# que ya usa panel/index.html (.lbadge encontrados/mitigando/arreglados/filtrados)
+# en vez de inventar tonos nuevos.
 STATUS_COLOR = {
-    "Cerrada": "#6b7d5c", "Corregida": "#c89a3c", "En proceso": "#3a86a8",
-    "Triada": "#8a847a", "Planificada": "#8a847a", "Confirmada": "#8a847a",
-    "Hipotesis": "#8a847a", "Filtrada": "#8a847a",
+    "Hipotesis": HUD["amber"], "Confirmada": HUD["amber"], "Triada": HUD["amber"], "Planificada": HUD["amber"],
+    "En proceso": HUD["cyan"],
+    "Corregida": HUD["green_soft"],
+    "Cerrada": HUD["green"],
+    "Filtrada": HUD["ink_mute"],
 }
 _SEV_RE = _re.compile(r"\b(P0|P1|P2|P3|FILTERED)\b")
 _ST_RE = _re.compile(r"\b(En proceso|Cerrada|Corregida|Triada|Planificada|Confirmada|Hipotesis|Filtrada)\b")
+
+BUCKET_LABEL = {"encontrados": "Encontrado", "mitigando": "Mitigando", "arreglados": "Arreglado", "filtrados": "Filtrado"}
+
+
+def bucket_of(f):
+    """Bucket de 4 estados (igual vocabulario que panel/app.jsx lifecycleOf), pero
+    honesto: 'closed' solo cae en 'arreglados' si is_truly_closed() (evidencia
+    real), no por el mero status."""
+    if is_filtered(f):
+        return "filtrados"
+    if is_truly_closed(f):
+        return "arreglados"
+    if f.get("status") in ("fixed", "fixing", "candidate-resolved", "closed"):
+        return "mitigando"
+    return "encontrados"
+
+
+def stage_of(f):
+    """Etapa (de 5) para el stepper por-card. Ver build_lifecycle_stepper_html:
+    NUNCA infiere fecha, solo el status actual."""
+    if is_truly_closed(f):
+        return "cerrado"
+    st = f.get("status")
+    if st in ("fixed", "candidate-resolved", "closed"):
+        return "corregido"
+    if st == "fixing":
+        return "mitigando"
+    if st in ("triaged", "planned"):
+        return "triado"
+    return "encontrado"
 
 
 def decorate_tokens(html_body):
@@ -456,8 +524,8 @@ def decorate_tokens(html_body):
         if skip or not seg:
             out.append(seg)
             continue
-        seg = _SEV_RE.sub(lambda m: f'<span class="sev-chip" style="background:{PRIO_COLOR.get(m.group(1),"#8a847a")}">{m.group(1)}</span>', seg)
-        seg = _ST_RE.sub(lambda m: f'<span class="st-chip" style="color:{STATUS_COLOR.get(m.group(1),"#8a847a")}">{m.group(1)}</span>', seg)
+        seg = _SEV_RE.sub(lambda m: f'<span class="sev-chip" style="background:{PRIO_COLOR.get(m.group(1), HUD["ink_mute"])}">{m.group(1)}</span>', seg)
+        seg = _ST_RE.sub(lambda m: f'<span class="st-chip" style="color:{STATUS_COLOR.get(m.group(1), HUD["ink_mute"])}">{m.group(1)}</span>', seg)
         out.append(seg)
     return "".join(out)
 
@@ -468,6 +536,8 @@ def _svg_matrix(findings):
     cols = [("EXPLOITABLE", "Explotable"), ("CONDITIONAL", "Condicional"), ("—", "Sin confirmar")]
     grid = {(r, c): 0 for r in rows for c, _ in cols}
     for f in findings:
+        if not isinstance(f, dict):
+            continue
         p = prio_of(f)
         if p not in rows:
             continue
@@ -511,6 +581,16 @@ def wrap_acronyms(html_body):
     return "".join(out)
 
 
+def _prose(text):
+    """Texto libre (hipotesis/rationale/condiciones/evidencia): escapa y envuelve
+    siglas conocidas — es el unico tratamiento que aplicamos dentro de las cards
+    (nunca decorate_tokens ahi, para no re-envolver severidades ya renderizadas
+    como pills nativas)."""
+    if not text:
+        return ""
+    return wrap_acronyms(esc(text))
+
+
 def slugify(text):
     s = _re.sub(r"<[^>]+>", "", str(text))
     s = _re.sub(r"[*`]", "", s)
@@ -536,7 +616,9 @@ def build_toc(md_text):
 
 
 def _svg_donut(by_prio):
-    """Dona de distribucion por severidad (SVG inline, sin libs)."""
+    """Dona de distribucion por severidad (SVG inline, sin libs). Segmentos y
+    leyenda disparan el filtro compartido (interactivity_spec): clic en 'P0'
+    filtra tabla 1.2 y cards 1.3 a la vez."""
     order = ["P0", "P1", "P2", "P3", "FILTERED", "—"]
     data = [(p, by_prio.get(p, 0)) for p in order if by_prio.get(p, 0) > 0]
     total = sum(n for _, n in data) or 1
@@ -550,14 +632,16 @@ def _svg_donut(by_prio):
     for p, n in data:
         frac = n / total
         seg_len = frac * circ
+        clickable = ' class="scatter-pt"' if p in PRIO_ORDER and p not in ("FILTERED", "—") else ""
+        onclick = f" onclick=\"vhFilterFromChart('sev','{esc(p)}')\"" if clickable else ""
         segs.append(
-            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{PRIO_COLOR.get(p,"#8a847a")}" '
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{PRIO_COLOR.get(p, HUD["ink_mute"])}" '
             f'stroke-width="{stroke}" stroke-dasharray="{seg_len:.2f} {circ-seg_len:.2f}" '
-            f'stroke-dashoffset="{-off:.2f}" transform="rotate(-90 {cx} {cy})"><title>{esc(p)}: {n}</title></circle>'
+            f'stroke-dashoffset="{-off:.2f}" transform="rotate(-90 {cx} {cy})"{clickable}{onclick}><title>{esc(p)}: {n}</title></circle>'
         )
         off += seg_len
     legend = "".join(
-        f'<span class="lg"><span class="sw" style="background:{PRIO_COLOR.get(p,"#8a847a")}"></span>{esc(p)} · {n}</span>'
+        f'<span class="lg" onclick="vhFilterFromChart(\'sev\',\'{esc(p)}\')"><span class="sw" style="background:{PRIO_COLOR.get(p, HUD["ink_mute"])}"></span>{esc(p)} · {n}</span>'
         for p, n in data
     ) or '<span class="lg">sin hallazgos</span>'
     return (
@@ -569,8 +653,9 @@ def _svg_donut(by_prio):
     )
 
 
-def _svg_bars(pairs, color="#6b7d5c", label="—"):
-    """Barras horizontales (categoria -> conteo)."""
+def _svg_bars(pairs, color=HUD["cyan"]):
+    """Barras horizontales (categoria OWASP -> conteo). Cada fila filtra por texto
+    (reusa la busqueda compartida, ver interactivity_spec)."""
     if not pairs:
         return '<p class="muted">— sin datos —</p>'
     mx = max(n for _, n in pairs) or 1
@@ -579,7 +664,8 @@ def _svg_bars(pairs, color="#6b7d5c", label="—"):
     for name, n in pairs:
         w = max(3, int(bw * n / mx))
         rows.append(
-            f'<div class="bar"><span class="bar-l" title="{esc(name)}">{esc(name)}</span>'
+            f'<div class="bar" onclick="vhFilterFromChart(\'q\',\'{esc(name)}\')" title="Filtrar por {esc(name)}">'
+            f'<span class="bar-l" title="{esc(name)}">{esc(name)}</span>'
             f'<span class="bar-t"><span class="bar-f" style="width:{w}px;background:{color}"></span></span>'
             f'<span class="bar-n">{n}</span></div>'
         )
@@ -595,54 +681,115 @@ def _svg_progress(C, total):
     seg = []
     x = 0.0
     W = 280.0
-    for n, col, lbl in [(closed, "#6b7d5c", "cerrados"), (fixed_only, "#c89a3c", "corregidos"), (pend, "#c0563a", "pendientes")]:
+    for n, col, lbl in [(closed, HUD["green"], "cerrados"), (fixed_only, HUD["amber"], "corregidos"), (pend, HUD["red"], "pendientes")]:
         if n <= 0:
             continue
         w = W * n / total
         seg.append(f'<rect x="{x:.1f}" y="0" width="{w:.1f}" height="20" fill="{col}"><title>{lbl}: {n}</title></rect>')
         x += w
     legend = (
-        f'<span class="lg"><span class="sw" style="background:#6b7d5c"></span>Cerrados {closed}</span>'
-        f'<span class="lg"><span class="sw" style="background:#c89a3c"></span>Corregidos {fixed_only}</span>'
-        f'<span class="lg"><span class="sw" style="background:#c0563a"></span>Pendientes {pend}</span>'
+        f'<span class="lg"><span class="sw" style="background:{HUD["green"]}"></span>Cerrados {closed}</span>'
+        f'<span class="lg"><span class="sw" style="background:{HUD["amber"]}"></span>Corregidos {fixed_only}</span>'
+        f'<span class="lg"><span class="sw" style="background:{HUD["red"]}"></span>Pendientes {pend}</span>'
     )
     return (f'<svg viewBox="0 0 280 20" width="100%" height="20" preserveAspectRatio="none" '
             f'role="img" aria-label="Progreso de remediación">{"".join(seg)}</svg>'
             f'<div class="legend">{legend}</div>')
 
 
-def build_charts_html(L):
+def _svg_scatter(findings):
+    """CVSS (x, 0-10) x EPSS (y, 0-1) por hallazgo abierto — unico grafico nuevo,
+    visualiza en un vistazo la relacion que hoy solo se lee en la tabla. Clic en un
+    punto salta a la card del hallazgo (hashchange handler en _interactivity_js)."""
+    W, Hh, pad = 260, 160, 22
+    pts = []
+    for f in findings:
+        if not isinstance(f, dict) or not is_open(f):
+            continue
+        tri = f.get("triage") or {}
+        intel = f.get("intel") or {}
+        cvss, epss = tri.get("cvss"), intel.get("epss")
+        if cvss is None or epss is None:
+            continue
+        try:
+            cvss_f, epss_f = float(cvss), float(epss)
+        except (TypeError, ValueError):
+            continue
+        x = pad + (W - 2 * pad) * max(0.0, min(10.0, cvss_f)) / 10.0
+        y = (Hh - pad) - (Hh - 2 * pad) * max(0.0, min(1.0, epss_f))
+        color = PRIO_COLOR.get(prio_of(f), HUD["ink_mute"])
+        fid = f.get("id", "")
+        pts.append(
+            f'<circle class="scatter-pt" cx="{x:.1f}" cy="{y:.1f}" r="5" fill="{color}" fill-opacity=".85" '
+            f'stroke="{color}" stroke-width="1" onclick="location.hash=\'{esc(fid)}\'">'
+            f'<title>{esc(fid)} — {esc(f.get("title",""))} (CVSS {cvss_f:g}, EPSS {epss_f:g})</title></circle>'
+        )
+    if not pts:
+        return '<p class="muted">— sin hallazgos abiertos con CVSS y EPSS —</p>'
+    axes = (
+        f'<line x1="{pad}" y1="{Hh-pad}" x2="{W-pad}" y2="{Hh-pad}" stroke="{HUD["line2"]}" stroke-width="1"/>'
+        f'<line x1="{pad}" y1="{pad}" x2="{pad}" y2="{Hh-pad}" stroke="{HUD["line2"]}" stroke-width="1"/>'
+    )
+    return (
+        f'<svg viewBox="0 0 {W} {Hh}" width="100%" height="{Hh}" role="img" aria-label="CVSS versus EPSS">'
+        f'{axes}{"".join(pts)}</svg>'
+        '<div class="legend"><span class="lg">eje X: CVSS (0–10)</span><span class="lg">eje Y: EPSS (0–1)</span></div>'
+    )
+
+
+def build_charts_html(L, mode="technical", include_header=True):
     findings = L.get("findings", [])
     C = compute(L)
     total = len(findings)
-    # OWASP distribution
     owc = {}
     for f in findings:
+        if not isinstance(f, dict):
+            continue
         k = f.get("owasp_2025") or f.get("owasp_2021") or "—"
         owc[k] = owc.get(k, 0) + 1
     owpairs = sorted(owc.items(), key=lambda kv: -kv[1])[:8]
     kev = C["kev"]
     lvl, vtext, vcolor = risk_verdict(L)
-    return f"""<section id="panorama" class="panorama">
-  <h2 class="pan-h">Panorama de la auditoría</h2>
-  <div class="verdict" style="border-color:{vcolor}">
-    <span class="verdict-dot" style="background:{vcolor}"></span>
-    <span class="verdict-lvl" style="color:{vcolor}">Riesgo {esc(lvl)}</span>
-    <span class="verdict-txt">{esc(vtext)}</span>
-  </div>
-  <div class="kpis">
-    <div class="kpi"><div class="kpi-n">{total}</div><div class="kpi-l">Hallazgos</div></div>
-    <div class="kpi"><div class="kpi-n">{C['closed']}</div><div class="kpi-l">Cerrados</div></div>
-    <div class="kpi"><div class="kpi-n">{C['fixed']}</div><div class="kpi-l">Corregidos</div></div>
-    <div class="kpi"><div class="kpi-n" style="color:#b4532f">{kev}</div><div class="kpi-l">CISA KEV</div></div>
-  </div>
-  <div class="chart-grid">
-    <div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C['by_prio'])}</div></div>
-    <div class="chart"><div class="chart-t">Por categoría OWASP</div>{_svg_bars(owpairs, "#6b7d5c")}</div>
-    <div class="chart"><div class="chart-t">Matriz de riesgo · severidad × explotabilidad</div>{_svg_matrix(findings)}</div>
-    <div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>
-  </div>
-</section>"""
+    verdict_html = (
+        f'<div class="verdict" style="border-color:{esc(vcolor)}">'
+        f'<span class="verdict-dot" style="background:{esc(vcolor)}"></span>'
+        f'<span class="verdict-lvl" style="color:{esc(vcolor)}">Riesgo {esc(lvl)}</span>'
+        f'<span class="verdict-txt">{esc(vtext)}</span></div>'
+    )
+    kpis_html = (
+        '<div class="kpis">'
+        f'<div class="kpi"><div class="kpi-n">{total}</div><div class="kpi-l">Hallazgos</div></div>'
+        f'<div class="kpi"><div class="kpi-n" style="color:{HUD["green"]}">{C["closed"]}</div><div class="kpi-l">Cerrados</div></div>'
+        f'<div class="kpi"><div class="kpi-n" style="color:{HUD["green_soft"]}">{C["fixed"]}</div><div class="kpi-l">Corregidos</div></div>'
+        f'<div class="kpi"><div class="kpi-n" style="color:{HUD["red"]}">{kev}</div><div class="kpi-l">CISA KEV</div></div>'
+        '</div>'
+    )
+    if mode == "executive":
+        chart_grid = (
+            '<div class="chart-grid">'
+            f'<div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C["by_prio"])}</div></div>'
+            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>'
+            '</div>'
+        )
+    else:
+        chart_grid = (
+            '<div class="chart-grid">'
+            f'<div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C["by_prio"])}</div></div>'
+            f'<div class="chart"><div class="chart-t">Por categoría OWASP</div>{_svg_bars(owpairs, HUD["cyan"])}</div>'
+            f'<div class="chart"><div class="chart-t">Matriz de riesgo · severidad × explotabilidad</div>{_svg_matrix(findings)}</div>'
+            f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>'
+            f'<div class="chart chart-wide"><div class="chart-t">CVSS × EPSS · hallazgos abiertos</div>{_svg_scatter(findings)}</div>'
+            '</div>'
+        )
+    if not include_header:
+        # El caller ya renderizó su propio hero (verdict + KPIs) — p.ej. el
+        # ejecutivo, que usa un hero condensado propio en vez de repetir este.
+        # Evita duplicar el mismo veredicto/KPIs dos veces en la misma página.
+        return f'<section class="panorama panorama-charts">{chart_grid}</section>'
+    return (
+        '<section id="panorama" class="panorama"><h2 class="pan-h">Panorama de la auditoría</h2>'
+        f'{verdict_html}{kpis_html}{chart_grid}</section>'
+    )
 
 
 # ----------------------------- html -----------------------------------------
@@ -656,10 +803,8 @@ def md_to_html_blocks(md_text):
 
     def inline(s):
         s = esc(s)
-        # negrita **x**
-        import re
-        s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
-        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+        s = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+        s = _re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
         return s
 
     while i < n:
@@ -706,109 +851,901 @@ def md_to_html_blocks(md_text):
     return "\n".join(out)
 
 
-def build_html(md_text, has_pdf, md_name, pdf_name, L=None):
-    body = decorate_tokens(wrap_acronyms(md_to_html_blocks(md_text)))
+def build_attack_surface_html(L):
+    """1.1 como fila de facets en vez de 3 bullets — restyle liviano, mismo dato."""
+    asf = L.get("attack_surface") or {}
+    if not asf:
+        return '<p class="muted">(sin superficie de ataque registrada por recon)</p>'
+
+    def _facet(label, key):
+        v = joinlist(asf.get(key)) or "—"
+        return f'<div class="facet"><div class="flabel">{esc(label)}</div><div class="fval">{esc(v)}</div></div>'
+
+    return ('<div class="facets">'
+            + _facet("Entrypoints", "entrypoints")
+            + _facet("Trust boundaries", "trust_boundaries")
+            + _facet("Zonas de alto riesgo", "high_risk_zones")
+            + '</div>')
+
+
+def _search_blob(f):
+    intel = f.get("intel") or {}
+    owc = f.get("owasp_2025") or f.get("owasp_2021") or ""
+    return f"{f.get('id','')} {f.get('title','')} {f.get('location','')} {intel.get('package','')} {owc}".lower()
+
+
+def build_findings_table_html(L):
+    """1.2: tabla real con atributos data-* (sev/status/kev/search) para el filtro
+    compartido, IDs de fila para el click-to-scroll, y <th> click-to-sort."""
+    findings = L.get("findings", [])
+    if not findings:
+        return '<p class="muted">Sin hallazgos en el ledger.</p>'
+    heads = ["ID", "Prio", "CVSS", "Título", "Ubicación", "OWASP / CWE", "Explotable", "EPSS", "Estado"]
+    ths = "".join(f'<th data-sortcol="{i}">{esc(h)}</th>' for i, h in enumerate(heads))
+    rows = []
+    for f in sorted_findings(findings):
+        intel = f.get("intel") or {}
+        expl = f.get("exploitability") or {}
+        tri = f.get("triage") or {}
+        ver = f.get("verification") or {}
+        prio = prio_of(f)
+        bucket = bucket_of(f)
+        kev = bool(intel.get("in_cisa_kev"))
+        badges = ("KEV " if kev else "") + ("RANSOMWARE" if intel.get("known_ransomware_use") else "")
+        owc = f"{f.get('owasp_2025') or f.get('owasp_2021') or '—'} / {f.get('cwe') or '—'}"
+        est = f"{STATUS_LABEL.get(f.get('status'), f.get('status','—'))} / {ver.get('verdict','—')}"
+        epss = intel.get("epss")
+        cvss = tri.get("cvss")
+        location = f.get("location") or "—"
+        title_html = esc(f.get("title") or "—") + (f' <span class="pill">{esc(badges.strip())}</span>' if badges.strip() else "")
+        rows.append(
+            f'<tr class="frow" data-finding-id="{esc(f.get("id","?"))}" data-sev="{esc(prio)}" '
+            f'data-status="{esc(bucket)}" data-kev="{1 if kev else 0}" data-search="{esc(_search_blob(f))}">'
+            f'<td data-sort="{esc(f.get("id",""))}"><code>{esc(f.get("id","?"))}</code></td>'
+            f'<td data-sort="{PRIO_ORDER.get(prio,5)}"><span class="sev" style="color:{esc(PRIO_COLOR.get(prio, HUD["ink_mute"]))}">{esc(prio)}</span></td>'
+            f'<td data-sort="{cvss if cvss is not None else -1}">{esc(cvss) if cvss is not None else "—"}</td>'
+            f'<td>{title_html}</td>'
+            f'<td><code>{esc(location)}</code></td>'
+            f'<td>{esc(owc)}</td>'
+            f'<td>{esc(expl.get("verdict","—"))}</td>'
+            f'<td data-sort="{epss if epss is not None else -1}">{esc(epss) if epss is not None else "—"}</td>'
+            f'<td>{esc(est)}</td>'
+            '</tr>'
+        )
+    return f'<div class="tablecard"><table id="findings-table"><thead><tr>{ths}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+
+
+def _flow_steps(flow):
+    """sast.flow es un STRING 'SRC ... -> SINK ...' (ver ledger.schema.json);
+    lo partimos en pasos para el killchain en vez de una linea corrida."""
+    if not flow:
+        return []
+    if isinstance(flow, (list, tuple)):
+        return [str(x).strip() for x in flow if x]
+    return [p.strip() for p in _re.split(r"->|→", str(flow)) if p.strip()]
+
+
+def _as_list(v):
+    if not v:
+        return []
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if x not in (None, "")]
+    return [str(v)]
+
+
+def _killchain_html(items):
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    lis = "".join(f'<li><span class="kn">{i+1}</span><span class="kt">{_prose(item)}</span></li>' for i, item in enumerate(items))
+    return f'<ol class="killchain">{lis}</ol>'
+
+
+def build_lifecycle_stepper_html(f):
+    """Stepper de 5 etapas. Refleja SOLO f['status'] via una tabla ordinal
+    ESTATICA: el schema no registra timestamps por etapa (solo run.started_at),
+    asi que esto NUNCA infiere ni muestra una fecha — no lo 'mejores' agregando
+    una sin evidencia real, seria fabricar datos (CLAUDE.md regla 9)."""
+    if is_filtered(f):
+        return '<div class="ltrack filtered">Filtrado (no priorizado)</div>'
+    steps = [("encontrado", "Encontrado"), ("triado", "Triado"), ("mitigando", "Mitigando"),
+             ("corregido", "Corregido"), ("cerrado", "Cerrado")]
+    cur = stage_of(f)
+    idx = next((i for i, (k, _) in enumerate(steps) if k == cur), 0)
+    parts = []
+    for i, (k, label) in enumerate(steps):
+        if i < idx:
+            state = "past"
+        elif i == idx:
+            state = "done" if cur == "cerrado" else "cur"
+        else:
+            state = "future"
+        if i > 0:
+            parts.append(f'<span class="lbar{" on" if i <= idx else ""}"></span>')
+        parts.append(f'<span class="lstep {state}"><span class="ld"></span>{esc(label)}</span>')
+    return '<div class="ltrack">' + "".join(parts) + '</div>'
+
+
+def build_finding_card_html(f, mode, tech_html_name=None):
+    """Una card por hallazgo, espejo del `.detail` del panel (dhead/facets/
+    killchain/ltrack), sin border-left como acento en ningun lado (regla del
+    proyecto: test_no_sidestripe_border_left_accent)."""
+    sast = f.get("sast") or {}
+    intel = f.get("intel") or {}
+    expl = f.get("exploitability") or {}
+    tri = f.get("triage") or {}
+    ver = f.get("verification") or {}
+    fid = f.get("id", "?")
+    title = f.get("title") or "(sin título)"
+    prio = prio_of(f)
+    bucket = bucket_of(f)
+    kev = bool(intel.get("in_cisa_kev"))
+    ransom = bool(intel.get("known_ransomware_use"))
+    location = f.get("location") or "—"
+    owc = f.get("owasp_2025") or f.get("owasp_2021") or "—"
+    cwe = f.get("cwe") or "—"
+    open_attr = " open" if (prio in ("P0", "P1") or kev) else ""
+    search = esc(_search_blob(f))
+
+    # linea de preview: la respuesta a "por que me importa" ANTES de expandir.
+    # nunca inventada, siempre uno de estos tres campos en orden de preferencia.
+    preview = sast.get("hypothesis") or tri.get("rationale")
+    if not preview:
+        v = expl.get("verdict")
+        preview = f"{v} — {location}" if v else "Sin diagnóstico adicional todavía."
+
+    dchips = [f'<span class="sev" style="color:{esc(PRIO_COLOR.get(prio, HUD["ink_mute"]))}">{esc(prio)}</span>']
+    if kev:
+        dchips.append(f'<span class="tag" style="background:{HUD["red"]}">KEV</span>')
+    if ransom:
+        dchips.append(f'<span class="tag" style="background:{HUD["amber"]}">RANSOMWARE</span>')
+    dchips.append(f'<span class="lbadge {bucket}">{esc(BUCKET_LABEL[bucket])}</span>')
+
+    header = (
+        '<summary class="dhead">'
+        f'<span class="dleft"><span class="chip">{esc(fid)}</span> <strong class="dtitle">{esc(title)}</strong></span>'
+        f'<span class="dchips">{"".join(dchips)}</span>'
+        '</summary>'
+        f'<p class="fpreview">{_prose(preview)} <code>{esc(location)}</code></p>'
+    )
+
+    if mode == "executive":
+        impact = tri.get("rationale") or preview
+        link_target = f"{esc(tech_html_name)}#{esc(fid)}" if tech_html_name else f"#{esc(fid)}"
+        body = (
+            '<div class="facets">'
+            '<div class="facet wide"><div class="flabel">Impacto</div><div class="fval">'
+            f'{_prose(impact)} · prioridad {esc(prio)}. '
+            f'<a class="ext" href="{link_target}">Ver detalle técnico</a></div></div>'
+            '</div>'
+        )
+        return (f'<details class="fcard" id="{esc(fid)}" data-sev="{esc(prio)}" data-status="{esc(bucket)}" '
+                f'data-kev="{1 if kev else 0}" data-search="{search}"{open_attr}>{header}{body}</details>')
+
+    # ---- variante tecnica: facets completos ----
+    facets = [
+        '<div class="facet"><div class="flabel">📍 Ubicación</div><div class="fval">'
+        f'<code class="copychip" data-copy="{esc(location)}">{esc(location)}</code> '
+        f'<span class="pill">{esc(owc)}</span> <span class="pill">{esc(cwe)}</span> '
+        f'<span class="muted">{esc(f.get("source") or "—")}</span></div></div>'
+    ]
+
+    if sast:
+        stat_row = (f'<div class="statrow"><span>{esc(sast.get("tool","—"))}</span>'
+                    f'<span>regla <code>{esc(sast.get("rule","—"))}</code></span>'
+                    f'<span>confianza {esc(sast.get("confidence","—"))}</span></div>')
+        hyp = f'<p class="fprose">{_prose(sast.get("hypothesis"))}</p>' if sast.get("hypothesis") else ""
+        flow_html = _killchain_html(_flow_steps(sast.get("flow")))
+        sarif = (f'<div class="epssrow">SARIF <code class="copychip" data-copy="{esc(sast.get("sarif_ref"))}">{esc(sast.get("sarif_ref"))}</code></div>'
+                 if sast.get("sarif_ref") else "")
+        facets.append(f'<div class="facet"><div class="flabel">🔬 SAST</div><div class="fval">{stat_row}{hyp}{flow_html}{sarif}</div></div>')
+
+    if intel:
+        cve_chips = "".join(
+            f'<a class="refchip" href="https://nvd.nist.gov/vuln/detail/{esc(cid)}" target="_blank" rel="noopener noreferrer"><span class="rk">CVE</span>{esc(cid)}</a>'
+            for cid in (intel.get("cve_ids") or [])
+        ) + "".join(
+            f'<a class="refchip" href="https://github.com/advisories/{esc(gid)}" target="_blank" rel="noopener noreferrer"><span class="rk">GHSA</span>{esc(gid)}</a>'
+            for gid in (intel.get("ghsa_ids") or [])
+        )
+        epss = intel.get("epss")
+        epss_html = ""
+        if epss is not None:
+            try:
+                pct = max(0.0, min(1.0, float(epss))) * 100
+                epss_html = f'<div class="epssrow">EPSS <div class="meter"><div class="meter-f" style="width:{pct:.0f}%"></div></div><span class="pill">{esc(epss)}</span></div>'
+            except (TypeError, ValueError):
+                epss_html = f'<div class="epssrow">EPSS <span class="pill">{esc(epss)}</span></div>'
+        fixed_v = intel.get("fixed_version")
+        fixed_html = f' <span style="color:{HUD["green_soft"]}">→ {esc(fixed_v)}</span>' if fixed_v else ""
+        facets.append(
+            '<div class="facet"><div class="flabel">📡 Dependencia</div><div class="fval">'
+            f'<span class="chip">{esc(intel.get("package","—"))}@{esc(intel.get("installed_version","—"))}</span>{fixed_html}'
+            + (f'<div class="refs">{cve_chips}</div>' if cve_chips else "")
+            + epss_html + '</div></div>'
+        )
+
+    if expl:
+        v = expl.get("verdict", "—")
+        vcolor = HUD["red"] if v == "EXPLOITABLE" else (HUD["amber"] if v == "CONDITIONAL" else HUD["ink_mute"])
+        reachable, controllable = expl.get("reachable"), expl.get("controllable")
+        reach = "✓" if reachable else ("✕" if reachable is not None else "—")
+        ctrl = "✓" if controllable else ("✕" if controllable is not None else "—")
+        reach_c = HUD["green_soft"] if reachable else HUD["red"]
+        ctrl_c = HUD["green_soft"] if controllable else HUD["red"]
+        conf = ""
+        if expl.get("confidence_adjusted") is not None:
+            conf = (f'<p class="fprose">Confianza: SAST {esc(sast.get("confidence","—"))} → '
+                    f'red-team {esc(expl.get("confidence_adjusted"))}</p>')
+        cond = f'<p class="fprose">{_prose(expl.get("conditions"))}</p>' if expl.get("conditions") else ""
+        chain_html = _killchain_html(_as_list(expl.get("conceptual_chain")))
+        facets.append(
+            '<div class="facet"><div class="flabel">🎯 Explotabilidad</div><div class="fval">'
+            f'<span class="sev" style="color:{vcolor}">{esc(v)}</span> '
+            f'<span style="color:{reach_c}">reachable {reach}</span> '
+            f'<span style="color:{ctrl_c}">controllable {ctrl}</span>'
+            f'{cond}{conf}{chain_html}</div></div>'
+        )
+
+    if tri:
+        cvss = tri.get("cvss")
+        cvss_html = (f'<span class="cvss-n">{esc(cvss)}</span> <span class="pill">v{esc(tri.get("cvss_version","—"))}</span> '
+                     if cvss is not None else "")
+        rationale = f'<p class="fprose">{_prose(tri.get("rationale"))}</p>' if tri.get("rationale") else ""
+        dedup = (f'<div class="refs"><a class="refchip" href="#{esc(tri.get("dedup_of"))}"><span class="rk">DUP</span>{esc(tri.get("dedup_of"))}</a></div>'
+                 if tri.get("dedup_of") else "")
+        facets.append(
+            '<div class="facet wide"><div class="flabel">⚖️ Triage</div><div class="fval">'
+            f'{cvss_html}<span class="sev" style="color:{esc(PRIO_COLOR.get(prio, HUD["ink_mute"]))}">{esc(prio)}</span>'
+            f'{rationale}{dedup}</div></div>'
+        )
+
+    # honestidad visible por-card (no solo en el agregado 3.3)
+    if is_truly_closed(f):
+        facets.append(
+            '<div class="facet good"><div class="flabel">✅ Verificación</div><div class="fval">'
+            f'<span class="ok">{esc(ver.get("verdict","CLOSED"))}</span>'
+            + (f' · {_prose(ver.get("evidence"))}' if ver.get("evidence") else "")
+            + '</div></div>'
+        )
+    elif f.get("status") == "closed":
+        facets.append(
+            '<div class="alert card-alert"><div class="aic">⚠</div><div class="atxt">'
+            '<b>status: closed</b> pero sin veredicto <b>CLOSED</b> del verify-engineer — '
+            'no cuenta como cerrado.</div></div>'
+        )
+
+    footer = ""
+    if ver.get("verdict"):
+        vcol = {"CLOSED": HUD["green"], "NOT_CLOSED": HUD["amber"], "REGRESSION": HUD["red"]}.get(ver.get("verdict"), HUD["ink_mute"])
+        footer = (f'<div class="dfooter"><span class="sev" style="color:{vcol}">{esc(ver.get("verdict"))}</span>'
+                  + (f' <span class="muted">{_prose(ver.get("evidence"))}</span>' if ver.get("evidence") else "")
+                  + '</div>')
+
+    body = f'<div class="facets">{"".join(facets)}</div><div class="stepper-row">{build_lifecycle_stepper_html(f)}</div>{footer}'
+    return (f'<details class="fcard" id="{esc(fid)}" data-sev="{esc(prio)}" data-status="{esc(bucket)}" '
+            f'data-kev="{1 if kev else 0}" data-search="{search}"{open_attr}>{header}{body}</details>')
+
+
+def _cards_toolbar_html(sf):
+    counts = {"encontrados": 0, "mitigando": 0, "arreglados": 0, "filtrados": 0}
+    for f in sf:
+        counts[bucket_of(f)] = counts.get(bucket_of(f), 0) + 1
+    tabs = [f'<button class="tab on" onclick="vhSetStatus(this,\'\')">Todos<span class="tcount">{len(sf)}</span></button>']
+    for key in ("encontrados", "mitigando", "arreglados", "filtrados"):
+        tabs.append(
+            f'<button class="tab" onclick="vhSetStatus(this,\'{key}\')">'
+            f'<span class="tdot {key}"></span>{BUCKET_LABEL[key]}<span class="tcount">{counts.get(key,0)}</span></button>'
+        )
+    chips = "".join(f'<button class="chip" data-chip-sev="{p}" onclick="vhSetSev(this,\'{p}\')">{p}</button>' for p in ("P0", "P1", "P2", "P3"))
+    chips += '<button class="chip" onclick="vhSetKev(this)">KEV</button>'
+    return (
+        '<div class="toolbar-cards">'
+        f'<div class="tabs">{"".join(tabs)}</div>'
+        f'<div class="chiprow">{chips}</div>'
+        '<input id="fsearch" type="search" placeholder="Buscar id, título, ubicación, paquete…" oninput="vhSetQuery(this.value)">'
+        '<div class="expandrow"><button class="dl" onclick="vhExpandAll(true)">Expandir todo</button>'
+        '<button class="dl" onclick="vhExpandAll(false)">Colapsar todo</button></div>'
+        '</div>'
+    )
+
+
+def build_finding_cards_section_html(L, mode, tech_html_name=None):
+    findings = L.get("findings", [])
+    sf = sorted_findings(findings)
+    if mode == "technical":
+        if not sf:
+            return '<div class="cards-wrap"><p class="muted">Sin hallazgos.</p></div>'
+        toolbar = _cards_toolbar_html(sf)
+        cards = "".join(build_finding_card_html(f, "technical") for f in sf)
+        return f'<div class="cards-wrap">{toolbar}<div id="cards">{cards}</div></div>'
+
+    # ---- executive: solo P0/P1/KEV se renderizan como card completa; el resto
+    # colapsa en una fila-resumen por bucket con link al informe tecnico ----
+    full, rest = [], {}
+    for f in sf:
+        p = prio_of(f)
+        kev = (f.get("intel") or {}).get("in_cisa_kev")
+        if p in ("P0", "P1") or kev:
+            full.append(f)
+        else:
+            rest.setdefault(p, []).append(f)
+    cards = "".join(build_finding_card_html(f, "executive", tech_html_name=tech_html_name) for f in full)
+    if not full:
+        cards = '<p class="muted">Sin hallazgos de prioridad alta.</p>'
+    rollup_rows = []
+    for p in ("P2", "P3", "FILTERED", "—"):
+        items = rest.get(p, [])
+        if not items:
+            continue
+        rollup_rows.append(
+            f'<tr><td><span class="sev" style="color:{esc(PRIO_COLOR.get(p, HUD["ink_mute"]))}">{esc(p)}</span></td>'
+            f'<td>{len(items)} hallazgo(s)</td>'
+            f'<td><a class="ext" href="{esc(tech_html_name or "#")}">Ver en informe técnico</a></td></tr>'
+        )
+    rollup = ""
+    if rollup_rows:
+        rollup = ('<table class="rollup"><thead><tr><th>Prio</th><th>Cantidad</th><th></th></tr></thead>'
+                  f'<tbody>{"".join(rollup_rows)}</tbody></table>')
+    return f'<div class="cards-wrap">{cards}{rollup}</div>'
+
+
+def _report_css():
+    """CSS compartido por B.html y B-executive.html. Tokens copiados literalmente
+    de panel/index.html (mismo brand ya en produccion, no una paleta nueva).
+    Sin border-left como acento en NINGUN selector (test_no_sidestripe_border_left_accent)."""
+    return """
+:root{
+  --bg:#070a0f;--bg-2:#0a0e16;--panel:#0e1420;--panel-2:#111a28;
+  --ink:#e6edf6;--ink-soft:#aebacb;--ink-mute:#6b7889;
+  --line:rgba(120,160,200,.12);--line-2:rgba(120,160,200,.22);
+  --green:#22c55e;--green-soft:#4ade80;--cyan:#22d3ee;--cyan-soft:#67e8f9;
+  --amber:#f59e0b;--orange:#fb923c;--red:#ef4444;--violet:#a78bfa;
+  --glow-cyan:0 0 0 1px rgba(34,211,238,.35),0 0 22px -4px rgba(34,211,238,.5);
+  --glow-green:0 0 0 1px rgba(34,197,94,.35),0 0 22px -4px rgba(34,197,94,.5);
+  /* Desviacion deliberada del panel: el panel carga Fira Code/JetBrains Mono/
+     Inter/Share Tech Mono desde Google Fonts, pero report.py debe seguir siendo
+     100% self-contained/offline -> solo stacks de fuente locales del sistema. */
+  --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+  --hud:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+.bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(34,211,238,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.035) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 85% 55% at 50% 0%,#000 30%,transparent 80%)}
+.scanline{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.35;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.18) 2px 3px);mix-blend-mode:overlay}
+@media (prefers-reduced-motion:reduce){.scanline{display:none}}
+
+.toolbar{position:sticky;top:0;z-index:20;display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:10px 18px;background:rgba(7,10,15,.88);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.toolbar .lbl{margin-right:auto;font-family:var(--mono);font-size:12px;color:var(--ink-mute);letter-spacing:1px;text-transform:uppercase}
+.dl,.print{font-family:var(--mono);font-size:12.5px;font-weight:600;text-decoration:none;cursor:pointer;border:1px solid var(--line-2);border-radius:9px;padding:7px 13px;color:var(--ink-soft);background:var(--bg-2);display:inline-flex;gap:7px;align-items:center;transition:border-color .2s,box-shadow .2s,color .2s}
+.dl:hover,.print:hover{border-color:var(--cyan);color:var(--ink);box-shadow:var(--glow-cyan)}
+.print{border-color:rgba(34,197,94,.4);color:var(--green-soft)}
+.print:hover{border-color:var(--green);box-shadow:var(--glow-green)}
+.dl-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-mute);margin-right:2px}
+
+.layout{max-width:1180px;margin:0 auto;padding:30px 24px 90px;display:grid;grid-template-columns:216px 1fr;gap:34px;align-items:start;position:relative;z-index:2}
+.wrap{position:relative;z-index:2;max-width:980px;margin:0 auto;padding:30px 24px 90px}
+
+.toc{position:sticky;top:64px;display:flex;flex-direction:column;gap:2px;font-family:var(--mono);font-size:12px;max-height:calc(100vh - 90px);overflow:auto}
+.toc-h{text-transform:uppercase;letter-spacing:1.5px;font-size:10px;color:var(--ink-mute);margin-bottom:8px}
+.toc a{color:var(--ink-soft);text-decoration:none;padding:3px 10px;border-radius:6px;transition:background .15s,color .15s}
+.toc a:hover{color:var(--cyan);background:rgba(34,211,238,.06)}
+.toc .toc-3{padding-left:20px;color:var(--ink-mute);font-size:11px}
+.toc .toc-x{color:var(--cyan);font-weight:700}
+.doc{min-width:0}
+
+h1{font-family:var(--hud);letter-spacing:.02em;font-size:2rem;margin:.2em 0 .3em;line-height:1.2;color:var(--ink)}
+h2{font-size:1.4rem;margin:1.6em 0 .5em;padding-bottom:.3em;border-bottom:1px solid var(--line);scroll-margin-top:64px;color:var(--ink)}
+h3{font-size:1.1rem;margin:1.3em 0 .4em;color:var(--cyan-soft);scroll-margin-top:64px}
+h4{font-size:.98rem;margin:1.1em 0 .3em;font-family:var(--mono);color:var(--ink-soft)}
+p,li{font-size:1rem;color:var(--ink-soft)}
+blockquote{margin:1em 0;padding:14px 18px;background:rgba(255,255,255,.02);border:1px solid var(--line-2);border-radius:10px;color:var(--ink-soft)}
+abbr.ac{text-decoration:underline dotted;text-decoration-color:var(--cyan);text-underline-offset:3px;cursor:help}
+ul{margin:.4em 0 .8em;padding-left:1.3em} li{margin:.18em 0}
+hr{border:0;border-top:1px solid var(--line);margin:2em 0}
+code{font-family:var(--mono);background:rgba(34,211,238,.08);color:var(--cyan-soft);padding:1px 5px;border-radius:4px;font-size:.86em;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin:.6em 0 1.1em;table-layout:fixed}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-mute);cursor:pointer;white-space:nowrap}
+.tablecard{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+tr.frow{cursor:pointer}
+tr.frow:hover{background:rgba(34,211,238,.05)}
+.hide{display:none !important}
+
+.panorama{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg-2));padding:22px 24px;margin:0 0 22px}
+.pan-h{margin:0 0 14px;font-size:1.15rem;border:0;padding:0;color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:20px}
+.kpi{background:var(--bg-2);text-align:center;padding:18px 8px}
+.kpi-n{font-family:var(--hud);font-size:1.7rem;line-height:1;color:var(--cyan)}
+.kpi-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-mute);margin-top:8px}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chart{background:rgba(255,255,255,.015);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.chart-wide{grid-column:1/-1}
+.chart-t{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-mute);margin-bottom:10px}
+.donut{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.dn-n{font-family:var(--hud);font-size:24px;fill:var(--ink)}
+.dn-l{font-family:var(--mono);font-size:9px;fill:var(--ink-mute)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+.legend .lg{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.legend .sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.bars{display:flex;flex-direction:column;gap:7px}
+.bar{display:grid;grid-template-columns:120px 1fr 28px;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;cursor:pointer}
+.bar-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft)}
+.bar-t{background:rgba(255,255,255,.05);border-radius:5px;overflow:hidden;height:14px}
+.bar-f{display:block;height:14px;border-radius:5px}
+.bar-n{text-align:right;color:var(--ink-mute)}
+.muted{color:var(--ink-mute);font-style:italic}
+
+.verdict{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:13px 16px;margin-bottom:18px;background:rgba(255,255,255,.02)}
+.verdict.hero{padding:22px 24px;font-size:1.05rem}
+.verdict-dot{width:10px;height:10px;border-radius:50%;align-self:center;box-shadow:0 0 10px currentColor}
+.verdict-lvl{font-family:var(--hud);font-weight:700;font-size:1.4rem;text-transform:uppercase;letter-spacing:.04em}
+.verdict.hero .verdict-lvl{font-size:2.1rem}
+.verdict-txt{font-size:.98rem;color:var(--ink-soft)}
+
+.sev-chip{display:inline-block;padding:0 7px;border-radius:5px;font-family:var(--mono);font-weight:700;font-size:.78em;color:var(--bg);line-height:1.5;vertical-align:baseline}
+.st-chip{font-family:var(--mono);font-weight:700;font-size:.82em}
+
+.matrix{border:1px solid var(--line);border-radius:8px;overflow:hidden;font-family:var(--mono);font-size:11.5px;width:100%}
+.matrix th,.matrix td{text-align:center;padding:8px 6px;border:1px solid var(--line)}
+.matrix .mx-c{font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-mute);background:rgba(255,255,255,.02)}
+.matrix .mx-r{font-weight:700;background:rgba(255,255,255,.02)}
+.matrix td.mx{color:var(--ink-mute);background:transparent}
+.matrix td.mx.on{color:var(--ink);font-weight:700;background:rgba(255,255,255,.04)}
+.matrix td.mx.warn{color:var(--amber);font-weight:700;background:rgba(245,158,11,.12)}
+.matrix td.mx.hot{color:#fff;font-weight:700;background:var(--red)}
+
+.chip{font-family:var(--mono);font-size:11.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-mute);background:rgba(255,255,255,.02);display:inline-flex;align-items:center;gap:6px}
+.pill{font-family:var(--mono);display:inline-block;padding:1px 8px;border-radius:5px;font-size:10.5px;border:1px solid var(--line-2);color:var(--ink-mute)}
+.sev{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 7px;border:1px solid currentColor}
+.tag{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 6px;color:var(--bg);margin-left:4px}
+.cvss-n{font-family:var(--hud);font-size:1.3rem;color:var(--ink)}
+
+.lbadge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 9px;border-radius:6px;border:1px solid currentColor;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.lbadge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.lbadge.encontrados{color:var(--amber)}
+.lbadge.mitigando{color:var(--cyan-soft)}
+.lbadge.arreglados{color:var(--green-soft)}
+.lbadge.filtrados{color:var(--ink-mute)}
+
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tab{font-family:var(--mono);font-size:12.5px;color:var(--ink-mute);background:transparent;border:1px solid transparent;border-radius:9px;padding:7px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.tab:hover{color:var(--ink-soft)}
+.tab.on{color:var(--ink);border-color:var(--line-2);background:rgba(255,255,255,.03)}
+.tab .tdot{width:7px;height:7px;border-radius:50%}
+.tab .tdot.encontrados{background:var(--amber)}
+.tab .tdot.mitigando{background:var(--cyan)}
+.tab .tdot.arreglados{background:var(--green)}
+.tab .tdot.filtrados{background:var(--ink-mute)}
+.tab .tcount{font-size:10.5px;color:var(--ink-mute);background:rgba(255,255,255,.05);border-radius:999px;padding:1px 8px;min-width:20px;text-align:center}
+.tab.on .tcount{color:var(--ink);background:rgba(34,211,238,.12)}
+.chip.on{border-color:var(--cyan);color:var(--cyan-soft);background:rgba(34,211,238,.08)}
+.chiprow{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.toolbar-cards{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 16px;background:rgba(255,255,255,.015)}
+#fsearch{font-family:var(--mono);font-size:12.5px;background:var(--bg-2);border:1px solid var(--line-2);color:var(--ink);border-radius:9px;padding:7px 11px;width:100%;max-width:360px;margin-bottom:10px}
+.expandrow{display:flex;gap:8px}
+
+.cards-wrap{display:flex;flex-direction:column;gap:12px}
+.fcard{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg-2));padding:16px 18px;scroll-margin-top:64px;transition:box-shadow .3s}
+.fcard[open]{box-shadow:var(--glow-cyan)}
+.fcard.flash{animation:vhflash 1.6s ease-out}
+@keyframes vhflash{0%{box-shadow:0 0 0 2px var(--cyan),var(--glow-cyan)}100%{box-shadow:none}}
+@media (prefers-reduced-motion:reduce){.fcard.flash{animation:none}}
+.dhead{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--line);cursor:pointer;list-style:none}
+.dhead::-webkit-details-marker{display:none}
+.dhead::after{content:"▸";color:var(--ink-mute);font-size:13px;transition:transform .15s;margin-left:auto}
+details[open]>.dhead::after{transform:rotate(90deg)}
+@media (prefers-reduced-motion:reduce){.dhead::after{transition:none}}
+.dleft{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+.dtitle{font-family:var(--sans);font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+.dchips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.fpreview{margin:12px 0 0;font-size:.96rem;color:var(--ink-soft)}
+.fpreview code{margin-left:8px}
+
+.facets{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:0 28px;margin-top:8px}
+.facet{padding:12px 0;border-bottom:1px solid var(--line)}
+.facet.wide{grid-column:1/-1}
+.facet.good{background:linear-gradient(180deg,rgba(34,197,94,.07),transparent);border-radius:10px;padding:12px 14px;margin:4px 0;border-bottom:none}
+.flabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan-soft);margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.facet.good .flabel{color:var(--green-soft)}
+.fval{font-size:.92rem;color:var(--ink-soft);overflow-wrap:anywhere}
+.fval .ok{color:var(--green-soft);font-weight:700}
+.fprose{margin:8px 0 0;font-family:var(--sans);font-size:.92rem;color:var(--ink-soft)}
+.statrow{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--ink-mute)}
+.meter{display:inline-block;width:80px;height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;vertical-align:middle;margin:0 6px}
+.meter-f{height:100%;background:var(--amber)}
+.epssrow{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--ink-mute);display:flex;align-items:center}
+
+.killchain{list-style:none;margin:10px 0 2px;padding:0}
+.killchain li{display:flex;gap:12px;align-items:flex-start;padding:6px 0;position:relative}
+.killchain li:not(:last-child)::before{content:"";position:absolute;left:11px;top:27px;bottom:-6px;width:1px;background:var(--line-2)}
+.killchain .kn{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:rgba(34,211,238,.1);border:1px solid var(--line-2);color:var(--cyan-soft);font-family:var(--hud);font-size:11px;display:grid;place-items:center}
+.killchain .kt{font-size:.88rem;color:var(--ink-soft);padding-top:2px;overflow-wrap:anywhere;font-family:var(--mono)}
+
+.ltrack{display:inline-flex;align-items:center;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;gap:0}
+.lstep{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-mute);white-space:nowrap}
+.lstep .ld{width:7px;height:7px;border-radius:50%;background:var(--ink-mute)}
+.lstep.past{color:var(--green-soft);border-color:rgba(34,197,94,.4)}
+.lstep.past .ld{background:var(--green)}
+.lstep.done{color:var(--green-soft);border-color:var(--green);background:rgba(34,197,94,.1)}
+.lstep.done .ld{background:var(--green)}
+.lstep.cur{color:var(--cyan-soft);border-color:var(--cyan);background:rgba(34,211,238,.08);box-shadow:var(--glow-cyan)}
+.lstep.cur .ld{background:var(--cyan)}
+.lstep.future{opacity:.5}
+.lbar{width:16px;height:1px;background:var(--line-2);flex:0 0 auto}
+.lbar.on{background:rgba(34,197,94,.55)}
+.ltrack.filtered{color:var(--ink-mute);font-style:italic;border:1px dashed var(--line-2);border-radius:999px;padding:4px 12px;display:inline-block}
+.stepper-row{margin-top:12px}
+
+.refs{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.refchip{font-family:var(--mono);font-size:10.5px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);border-radius:7px;padding:3px 9px;color:var(--cyan-soft);text-decoration:none;background:rgba(34,211,238,.05)}
+.refchip:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:var(--glow-cyan)}
+.refchip .rk{color:var(--ink-mute);font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+
+.copychip{cursor:pointer}
+.copychip.copied{color:var(--green-soft) !important;background:rgba(34,197,94,.12) !important}
+
+.dfooter{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:.88rem;color:var(--ink-soft)}
+
+.alert{display:flex;gap:14px;align-items:flex-start;border:1px solid rgba(245,158,11,.32);border-radius:14px;background:linear-gradient(180deg,rgba(245,158,11,.08),transparent);padding:16px 18px;margin-bottom:20px}
+.alert .aic{flex:0 0 auto;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:rgba(245,158,11,.14);color:var(--amber);font-size:16px}
+.alert .atxt{font-size:.9rem;color:var(--ink-soft)}
+.alert .atxt b{color:var(--amber)}
+.alert.card-alert{margin:10px 0 0}
+
+.gloss{border-bottom:1px dotted var(--cyan-soft);cursor:help}
+#glosstip{position:fixed;z-index:1000;max-width:280px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;box-shadow:0 18px 44px -14px rgba(0,0,0,.85),var(--glow-cyan);font-family:var(--sans);font-size:12px;line-height:1.5;color:var(--ink-soft);pointer-events:none;opacity:0;transition:opacity .12s}
+#glosstip.on{opacity:1}
+@media (prefers-reduced-motion:reduce){#glosstip{transition:none}}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
+.stat{background:var(--bg-2);padding:20px 14px;text-align:center}
+.stat .n{font-family:var(--hud);font-size:28px;line-height:1;color:var(--cyan)}
+.stat .l{font-family:var(--mono);font-size:10.5px;color:var(--ink-mute);margin-top:8px;letter-spacing:.4px;text-transform:uppercase}
+
+.block{margin-bottom:24px}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:2.2px;text-transform:uppercase;color:var(--cyan);display:inline-flex;align-items:center;gap:10px;margin:0 0 14px}
+.eyebrow::before{content:"";width:22px;height:1px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.actioncol{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:rgba(255,255,255,.015);display:flex;flex-direction:column;gap:8px}
+.actionchip{width:100%;justify-content:flex-start}
+.rollup{width:100%;border-collapse:collapse;margin-top:10px}
+.rollup td,.rollup th{border-bottom:1px solid var(--line);padding:8px 10px;font-size:.85rem}
+
+.ext{color:var(--cyan-soft);text-decoration:none;border-bottom:1px solid rgba(34,211,238,.35);white-space:nowrap}
+.ext:hover{color:var(--cyan);border-bottom-color:var(--cyan)}
+.ext::after{content:"↗";font-size:.82em;margin-left:1px;opacity:.65}
+
+.sub{color:var(--ink-mute);font-family:var(--mono);font-size:12px;margin-bottom:20px;overflow-wrap:anywhere}
+.sub b{color:var(--ink-soft)}
+footer{margin-top:30px;color:var(--ink-mute);font-family:var(--mono);font-size:11px;border-top:1px solid var(--line);padding-top:16px}
+footer b{color:var(--cyan-soft)}
+footer .ext{margin:0 4px}
+
+@media print{
+  html,body{background:var(--bg) !important}
+  *{print-color-adjust:exact !important;-webkit-print-color-adjust:exact !important}
+  .bg-grid,.scanline,.toolbar,.toc,.toolbar-cards,.copychip,input[type=search]{display:none !important}
+  .layout{display:block;max-width:none;padding:0}
+  .wrap{max-width:none;padding:0}
+  .fcard{break-inside:avoid}
+  .fcard summary::after,.dhead::after{display:none}
+  details:not([open]) > *:not(summary){display:block !important}
+  .facet,.chart,.kpi,table,blockquote{break-inside:avoid}
+  h2,h3{break-after:avoid}
+  @page{margin:14mm 12mm}
+}
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr}
+  .toc{position:static;max-height:none;flex-direction:row;flex-wrap:wrap}
+  .chart-grid{grid-template-columns:1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+"""
+
+
+def _interactivity_js():
+    """Un solo <script> vanilla, ES2017-safe, cero red/CDN — debe funcionar
+    abriendo el archivo directo por file://. Ver interactivity_spec: filtro
+    compartido tabla+cards, expand/collapse, copy-to-clipboard con fallback,
+    deep-link por hash, glosario hover/focus, sort de tabla."""
+    return """<script>
+(function(){
+  var state = {sev:null, status:null, kev:false, q:''};
+  function apply(){
+    var q = state.q.toLowerCase();
+    function ok(el){
+      if(state.sev && el.dataset.sev !== state.sev) return false;
+      if(state.status && el.dataset.status !== state.status) return false;
+      if(state.kev && el.dataset.kev !== '1') return false;
+      if(q && el.dataset.search && el.dataset.search.indexOf(q) === -1) return false;
+      return true;
+    }
+    document.querySelectorAll('.fcard').forEach(function(c){ c.classList.toggle('hide', !ok(c)); });
+    document.querySelectorAll('#findings-table tbody tr[data-sev]').forEach(function(r){ r.classList.toggle('hide', !ok(r)); });
+  }
+  window.vhSetStatus = function(btn, v){
+    state.status = v || null;
+    document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('on'); });
+    if(btn) btn.classList.add('on');
+    apply();
+  };
+  window.vhSetSev = function(btn, v){
+    var was = btn && btn.classList.contains('on');
+    document.querySelectorAll('.chip[data-chip-sev]').forEach(function(b){ b.classList.remove('on'); });
+    state.sev = was ? null : v;
+    if(!was && btn) btn.classList.add('on');
+    apply();
+  };
+  window.vhSetKev = function(btn){
+    state.kev = !state.kev;
+    if(btn) btn.classList.toggle('on', state.kev);
+    apply();
+  };
+  window.vhSetQuery = function(v){ state.q = v || ''; apply(); };
+  window.vhExpandAll = function(v){
+    document.querySelectorAll('.fcard').forEach(function(c){ if(v){ c.setAttribute('open',''); } else { c.removeAttribute('open'); } });
+  };
+  window.vhFilterFromChart = function(kind, v){
+    if(kind === 'sev'){
+      var chip = document.querySelector('.chip[data-chip-sev="'+v+'"]');
+      if(chip) window.vhSetSev(chip, v);
+    } else if(kind === 'q'){
+      var inp = document.getElementById('fsearch');
+      if(inp){ inp.value = v; }
+      window.vhSetQuery(v);
+    }
+  };
+  window.vhSortTable = function(idx){
+    var tb = document.querySelector('#findings-table tbody');
+    if(!tb) return;
+    var rows = Array.prototype.slice.call(tb.rows);
+    var dir = tb.getAttribute('data-sort-dir') === 'asc' ? 'desc' : 'asc';
+    tb.setAttribute('data-sort-dir', dir);
+    rows.sort(function(a,b){
+      var av = a.cells[idx].getAttribute('data-sort'); if(av === null){ av = a.cells[idx].textContent; }
+      var bv = b.cells[idx].getAttribute('data-sort'); if(bv === null){ bv = b.cells[idx].textContent; }
+      var an = parseFloat(av), bn = parseFloat(bv), cmp;
+      if(!isNaN(an) && !isNaN(bn)){ cmp = an - bn; } else { cmp = String(av).localeCompare(String(bv)); }
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach(function(r){ tb.appendChild(r); });
+  };
+  function fallbackCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+  document.addEventListener('click', function(e){
+    var el = e.target.closest && e.target.closest('.copychip');
+    if(!el) return;
+    var text = el.getAttribute('data-copy') || el.textContent;
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(text).catch(function(){ fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+    el.classList.add('copied');
+    setTimeout(function(){ el.classList.remove('copied'); }, 1200);
+  });
+  function openFromHash(){
+    var id = decodeURIComponent(location.hash.replace('#',''));
+    if(!id) return;
+    var card = document.getElementById(id);
+    if(!card || card.tagName !== 'DETAILS') return;
+    card.setAttribute('open','');
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    card.scrollIntoView({behavior: reduced ? 'auto' : 'smooth', block:'start'});
+    if(!reduced){ card.classList.add('flash'); setTimeout(function(){ card.classList.remove('flash'); }, 1600); }
+  }
+  window.addEventListener('hashchange', openFromHash);
+  document.addEventListener('DOMContentLoaded', function(){
+    openFromHash();
+    document.querySelectorAll('#findings-table tbody tr[data-finding-id]').forEach(function(r){
+      r.addEventListener('click', function(){ location.hash = r.getAttribute('data-finding-id'); });
+    });
+    document.querySelectorAll('#findings-table thead th[data-sortcol]').forEach(function(th){
+      th.addEventListener('click', function(){ vhSortTable(parseInt(th.getAttribute('data-sortcol'),10)); });
+    });
+  });
+  function showGlossTip(el){
+    var text = el.getAttribute('title'); if(!text) return;
+    var tip = document.getElementById('glosstip');
+    if(!tip){ tip = document.createElement('div'); tip.id = 'glosstip'; document.body.appendChild(tip); }
+    tip.textContent = text;
+    var r = el.getBoundingClientRect();
+    tip.style.left = Math.max(8, r.left) + 'px';
+    tip.style.top = (r.bottom + 8) + 'px';
+    tip.classList.add('on');
+  }
+  function hideGlossTip(){ var tip = document.getElementById('glosstip'); if(tip){ tip.classList.remove('on'); } }
+  document.addEventListener('mouseover', function(e){ var el = e.target.closest && e.target.closest('.gloss, abbr.ac'); if(el){ showGlossTip(el); } });
+  document.addEventListener('focusin', function(e){ var el = e.target.closest && e.target.closest('.gloss, abbr.ac'); if(el){ showGlossTip(el); } });
+  document.addEventListener('mouseout', function(e){ var el = e.target.closest && e.target.closest('.gloss, abbr.ac'); if(el){ hideGlossTip(); } });
+})();
+</script>"""
+
+
+def build_html(md_text, has_pdf, md_name, pdf_name, L=None, mode="technical"):
+    """Construye el informe TECNICO (B.html — nombre back-compat, panel/app.jsx
+    ya apunta aqui). `mode` se preserva por firma/compat de tests; en la practica
+    solo se ejerce 'technical': el ejecutivo se compone aparte en
+    build_executive_html() (no via split de este markdown, ver diagnostic_card_spec)."""
     toc = build_toc(md_text)
-    charts = build_charts_html(L) if L is not None else ""
-    pdf_link = f'<a class="dl" href="{esc(pdf_name)}" download>PDF</a>' if has_pdf else ""
+    _base = md_name[:-3] if md_name.endswith(".md") else md_name
+    self_name = _base + ".html" if mode == "technical" else _base + "-executive.html"
+    sibling_name = _base + "-executive.html" if mode == "technical" else _base + ".html"
+    sibling_label = "Ver versión ejecutiva" if mode == "technical" else "Ver versión técnica"
+    toolbar_label = "informe técnico" if mode == "technical" else "informe ejecutivo"
+
+    def _wrap(x):
+        return decorate_tokens(wrap_acronyms(x))
+
+    charts = ""
+    if L is not None:
+        try:
+            # .md y .html divergen aquí a propósito: 1.1/1.2/1.3 se re-renderizan
+            # como facets/tabla/cards HUD en vez de los bloques markdown genéricos
+            # (build_md() no cambia — sigue siendo el artefacto de texto plano).
+            h11 = md_text.index("### 1.1 Superficie de ataque")
+            h11_end = md_text.index("\n", h11) + 1
+            h12 = md_text.index("### 1.2 Hallazgos")
+            h12_end = md_text.index("\n", h12) + 1
+            h13 = md_text.index("### 1.3 Diagnóstico por hallazgo")
+            h13_end = md_text.index("\n", h13) + 1
+            h2 = md_text.index("---\n\n## 2. Estrategia y plan de remediación")
+            body = (
+                _wrap(md_to_html_blocks(md_text[:h11_end]))
+                + build_attack_surface_html(L)
+                + _wrap(md_to_html_blocks(md_text[h12:h12_end]))
+                + build_findings_table_html(L)
+                + _wrap(md_to_html_blocks(md_text[h13:h13_end]))
+                + build_finding_cards_section_html(L, "technical", tech_html_name=self_name)
+                + _wrap(md_to_html_blocks(md_text[h2:]))
+            )
+            charts = build_charts_html(L, mode="technical")
+        except ValueError:
+            # Literales no encontrados (md_text no vino de build_md()): fallback
+            # plano, sin splice.
+            body = _wrap(md_to_html_blocks(md_text))
+            charts = build_charts_html(L, mode="technical")
+    else:
+        body = _wrap(md_to_html_blocks(md_text))
+
+    pdf_link = f'<a class="dl" href="{esc(pdf_name)}" download><span class="dl-l">PDF</span></a>' if has_pdf else ""
+    css = _report_css()
+    js = _interactivity_js()
+
     return f"""<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>vuln-hunter — Informe de auditoría</title>
-<style>
-  :root{{--paper:#f4f1ea;--ink:#1a1915;--ink-soft:#3a3833;--ink-mute:#8a847a;--rule:#ddd8cc;--accent:#b4532f;--card:#fff}}
-  *{{box-sizing:border-box}}
-  html{{scroll-behavior:smooth}}
-  body{{font-family:'Tinos',Georgia,'Times New Roman',serif;background:var(--paper);color:var(--ink);margin:0;line-height:1.6}}
-  .toolbar{{position:sticky;top:0;z-index:20;display:flex;gap:10px;justify-content:flex-end;align-items:center;
-    padding:10px 18px;background:rgba(244,241,234,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule)}}
-  .toolbar .lbl{{margin-right:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--ink-mute);letter-spacing:1px}}
-  .dl,.print{{font-family:ui-monospace,monospace;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer;
-    border:1px solid var(--accent);color:#fff;background:var(--accent);border-radius:8px;padding:8px 14px}}
-  .dl{{background:transparent;color:var(--accent)}}
-  .layout{{max-width:1140px;margin:0 auto;padding:32px 28px 80px;display:grid;grid-template-columns:212px 1fr;gap:36px;align-items:start}}
-  /* TOC */
-  .toc{{position:sticky;top:64px;display:flex;flex-direction:column;gap:2px;font-family:ui-monospace,monospace;font-size:12.5px;max-height:calc(100vh - 90px);overflow:auto}}
-  .toc-h{{text-transform:uppercase;letter-spacing:1.5px;font-size:10.5px;color:var(--ink-mute);margin-bottom:8px}}
-  .toc a{{color:var(--ink-soft);text-decoration:none;padding:3px 10px;border-radius:6px;transition:background .15s,color .15s}}
-  .toc a:hover{{color:var(--accent);background:#fbf6ec}}
-  .toc .toc-3{{padding-left:22px;color:var(--ink-mute);font-size:11.5px}}
-  .toc .toc-x{{color:var(--accent);font-weight:700}}
-  .doc{{min-width:0}}
-  h1{{font-size:2.1rem;margin:.2em 0 .3em;line-height:1.15}}
-  h2{{font-size:1.5rem;margin:1.6em 0 .5em;padding-bottom:.2em;border-bottom:1px solid var(--rule);scroll-margin-top:64px}}
-  h3{{font-size:1.18rem;margin:1.3em 0 .4em;color:var(--ink-soft);scroll-margin-top:64px}}
-  h4{{font-size:1.02rem;margin:1.1em 0 .3em;font-family:ui-monospace,monospace}}
-  p,li{{font-size:1.02rem}}
-  blockquote{{margin:1em 0;padding:14px 18px;background:#fbf6ec;border:1px solid #e7dcc6;border-radius:8px;color:var(--ink-soft)}}
-  abbr.ac{{text-decoration:underline dotted;text-decoration-color:var(--accent);text-underline-offset:3px;cursor:help;font-variant:inherit}}
-  ul{{margin:.4em 0 .8em;padding-left:1.3em}} li{{margin:.18em 0}}
-  hr{{border:0;border-top:1px solid var(--rule);margin:2em 0}}
-  code{{font-family:ui-monospace,SFMono-Regular,monospace;background:rgba(107,125,92,.12);padding:1px 5px;border-radius:4px;font-size:.86em}}
-  table{{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--rule);border-radius:10px;overflow:hidden;font-size:.92rem;margin:.6em 0 1.1em}}
-  th,td{{text-align:left;padding:9px 12px;border-bottom:1px solid #eee7d8;vertical-align:top}}
-  th{{background:#faf8f2;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-mute)}}
-  /* Panorama / charts */
-  .panorama{{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:22px 24px;margin:0 0 22px}}
-  .pan-h{{margin:0 0 14px;font-size:1.25rem;border:0;padding:0}}
-  .kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}}
-  .kpi{{text-align:center;background:#faf8f2;border:1px solid var(--rule);border-radius:10px;padding:14px 8px}}
-  .kpi-n{{font-size:1.8rem;font-weight:700;line-height:1;font-family:ui-monospace,monospace}}
-  .kpi-l{{font-family:ui-monospace,monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-mute);margin-top:6px}}
-  .chart-grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px}}
-  .chart{{background:#faf8f2;border:1px solid var(--rule);border-radius:10px;padding:14px 16px}}
-  .chart-wide{{grid-column:1/-1}}
-  .chart-t{{font-family:ui-monospace,monospace;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-mute);margin-bottom:10px}}
-  .donut{{display:flex;align-items:center;gap:16px;flex-wrap:wrap}}
-  .dn-n{{font-family:ui-monospace,monospace;font-size:26px;font-weight:700;fill:var(--ink)}}
-  .dn-l{{font-family:ui-monospace,monospace;font-size:10px;fill:var(--ink-mute)}}
-  .legend{{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--ink-soft)}}
-  .legend .lg{{display:inline-flex;align-items:center;gap:6px}}
-  .legend .sw{{width:10px;height:10px;border-radius:3px;display:inline-block}}
-  .bars{{display:flex;flex-direction:column;gap:7px}}
-  .bar{{display:grid;grid-template-columns:120px 1fr 28px;align-items:center;gap:8px;font-family:ui-monospace,monospace;font-size:11.5px}}
-  .bar-l{{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft)}}
-  .bar-t{{background:#eee7d8;border-radius:5px;overflow:hidden;height:14px}}
-  .bar-f{{display:block;height:14px;border-radius:5px}}
-  .bar-n{{text-align:right;color:var(--ink-mute)}}
-  .muted{{color:var(--ink-mute);font-style:italic}}
-  /* verdict callout */
-  .verdict{{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;border:1px solid var(--rule);border-radius:10px;
-    padding:13px 16px;margin-bottom:18px;background:#faf8f2}}
-  .verdict-dot{{width:10px;height:10px;border-radius:50%;align-self:center}}
-  .verdict-lvl{{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em}}
-  .verdict-txt{{font-size:.98rem;color:var(--ink-soft)}}
-  /* severity + status chips (cuerpo) */
-  .sev-chip{{display:inline-block;padding:0 7px;border-radius:5px;font-family:ui-monospace,monospace;font-weight:700;font-size:.78em;color:#fff;line-height:1.5;vertical-align:baseline}}
-  .st-chip{{font-family:ui-monospace,monospace;font-weight:700;font-size:.82em}}
-  /* risk matrix */
-  .matrix{{border:1px solid var(--rule);border-radius:8px;overflow:hidden;font-family:ui-monospace,monospace;font-size:12px;width:100%}}
-  .matrix th,.matrix td{{text-align:center;padding:8px 6px;border:1px solid #eee7d8}}
-  .matrix .mx-c{{font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-mute);background:#faf8f2}}
-  .matrix .mx-r{{font-weight:700;background:#faf8f2}}
-  .matrix td.mx{{color:var(--ink-mute);background:#fff}}
-  .matrix td.mx.on{{color:var(--ink);font-weight:700;background:#f3efe5}}
-  .matrix td.mx.warn{{color:#8a5a12;font-weight:700;background:#f7ecd2}}
-  .matrix td.mx.hot{{color:#fff;font-weight:700;background:#b4532f}}
-  @media print{{
-    .toolbar,.toc{{display:none}}
-    body{{background:#fff}}
-    .layout{{display:block;max-width:none;padding:0}}
-    .panorama,.chart,.kpi{{background:#fff}}
-    h2{{break-after:avoid}} table,blockquote,h3,h4,.panorama,.chart{{break-inside:avoid}}
-    @page{{margin:16mm 14mm}}
-  }}
-  @media (max-width:820px){{.layout{{grid-template-columns:1fr}}.toc{{position:static;max-height:none;flex-direction:row;flex-wrap:wrap}}.chart-grid{{grid-template-columns:1fr}}.kpis{{grid-template-columns:repeat(2,1fr)}}}}
-</style></head><body>
+<title>vuln-hunter — Informe de auditoría ({esc(toolbar_label)})</title>
+<style>{css}</style></head><body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="scanline" aria-hidden="true"></div>
 <div class="toolbar">
-  <span class="lbl">vuln-hunter // informe de auditoría</span>
+  <span class="lbl">vuln-hunter // {esc(toolbar_label)}</span>
+  <a class="dl" href="{esc(sibling_name)}">{esc(sibling_label)} →</a>
   {pdf_link}
-  <a class="dl" href="{esc(md_name)}" download>Markdown</a>
+  <a class="dl" href="{esc(md_name)}" download><span class="dl-l">MD</span></a>
   <button class="print" onclick="window.print()">Descargar PDF</button>
 </div>
 <div class="layout">
   {toc}
   <main class="doc">{charts}{body}</main>
 </div>
+{js}
+</body></html>"""
+
+
+def build_executive_html(L, md_name, pdf_name_exec, tech_html_name, has_pdf=False):
+    """Informe EJECUTIVO (B-executive.html): compuesto directo desde compute()/
+    risk_verdict()/action_buckets()/finding dicts — NO parsea build_md(), la
+    estructura diverge demasiado (condensado por construcción, no por CSS que
+    esconde cards que igual pesan)."""
+    findings = L.get("findings", [])
+    C = compute(L)
+    lvl, vtext, vcolor = risk_verdict(L)
+    now = datetime.now().isoformat(timespec="seconds")
+    run = L.get("run", {})
+    _base = md_name[:-3] if md_name.endswith(".md") else md_name
+    self_name = _base + "-executive.html"
+
+    # include_header=False: el hero de abajo ya cubre el veredicto + los KPIs,
+    # así que aquí solo se pide la cuadrícula de gráficas (nada de repetirlos).
+    charts = build_charts_html(L, mode="executive", include_header=False)
+    inmediato, semana, mes = action_buckets(findings)
+
+    def _bucket_col(title, items):
+        if not items:
+            body = '<p class="muted">(nada)</p>'
+        else:
+            body = "".join(
+                f'<div class="chip actionchip"><code>{esc(it.get("id","?"))}</code> {esc(it.get("title",""))}</div>'
+                for it in items
+            )
+        return f'<div class="actioncol"><div class="chart-t">{esc(title)}</div>{body}</div>'
+
+    action_html = (
+        '<div class="chart-grid">'
+        + _bucket_col("Inmediato (P0 / KEV)", inmediato)
+        + _bucket_col("Esta semana (P1)", semana)
+        + _bucket_col("Este mes (P2 / P3)", mes)
+        + '</div>'
+    )
+
+    cards_html = build_finding_cards_section_html(L, "executive", tech_html_name=tech_html_name)
+
+    kev_alert = ""
+    if C["kev"]:
+        kev_alert = (
+            '<div class="alert"><div class="aic">⚠</div><div class="atxt">'
+            f'<b>{C["kev"]} dependencia(s)</b> de producción con CVE en <b>CISA KEV</b> '
+            '(explotación confirmada in-the-wild). Parchea antes de desplegar.</div></div>'
+        )
+
+    open_kev = sum(1 for f in findings if isinstance(f, dict) and is_open(f) and (f.get("intel") or {}).get("in_cisa_kev"))
+    deploy_html = (
+        '<div class="alert card-alert" style="border-color:rgba(239,68,68,.4)"><div class="aic">⛔</div>'
+        f'<div class="atxt"><b>Deploy bloqueado</b> · {open_kev} hallazgo(s) KEV abiertos.</div></div>'
+        if open_kev else
+        '<div class="facet good"><div class="flabel">Deploy</div><div class="fval">Sin bloqueos KEV activos.</div></div>'
+    )
+
+    pdf_link = f'<a class="dl" href="{esc(pdf_name_exec)}" download><span class="dl-l">PDF</span></a>' if has_pdf else ""
+    css = _report_css()
+    js = _interactivity_js()
+
+    body = f"""
+<div class="toolbar">
+  <span class="lbl">vuln-hunter // informe ejecutivo</span>
+  <a class="dl" href="{esc(tech_html_name)}">Ver versión técnica →</a>
+  {pdf_link}
+  <a class="dl" href="{esc(md_name)}" download><span class="dl-l">MD</span></a>
+  <button class="print" onclick="window.print()">Descargar PDF</button>
+</div>
+<div class="wrap">
+  <div class="sub">Scope: <b>{esc(run.get('scope') or 'repo completo')}</b> · OWASP {esc(run.get('owasp_version','2025'))} · Branch {esc(run.get('branch','—'))} · Generado {esc(now)}</div>
+  <div class="verdict hero" style="border-color:{esc(vcolor)}">
+    <span class="verdict-dot" style="background:{esc(vcolor)}"></span>
+    <span class="verdict-lvl" style="color:{esc(vcolor)}">Riesgo {esc(lvl)}</span>
+    <span class="verdict-txt">{esc(vtext)}</span>
+  </div>
+  {kev_alert}
+  <div class="stats">
+    <div class="stat"><div class="n">{len(findings)}</div><div class="l">Hallazgos</div></div>
+    <div class="stat"><div class="n" style="color:{HUD['green']}">{C['closed']}</div><div class="l">Cerrados</div></div>
+    <div class="stat"><div class="n" style="color:{HUD['green_soft']}">{C['fixed']}</div><div class="l">Corregidos</div></div>
+    <div class="stat"><div class="n" style="color:{HUD['red']}">{C['kev']}</div><div class="l">CISA KEV</div></div>
+  </div>
+  <div class="block">
+    <div class="eyebrow">Panorama</div>
+    {charts}
+  </div>
+  <div class="block">{deploy_html}</div>
+  <div class="block">
+    <div class="eyebrow">Plan de acción</div>
+    {action_html}
+  </div>
+  <div class="block">
+    <div class="eyebrow">Casos prioritarios</div>
+    {cards_html}
+  </div>
+  <footer>Generado el {esc(now)} · vuln-hunter es un primer pase disciplinado; no reemplaza auditoría humana.
+    <a class="ext" href="{esc(tech_html_name)}">Informe técnico completo</a>
+    <a class="ext" href="{esc(tech_html_name)}#glosario">Glosario</a>
+  </footer>
+</div>
+{js}"""
+
+    return f"""<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vuln-hunter — Informe ejecutivo</title>
+<style>{css}</style></head><body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="scanline" aria-hidden="true"></div>
+{body}
 </body></html>"""
 
 
@@ -881,11 +1818,40 @@ def main():
         print(f"vuln-hunter: no se pudo leer el ledger ({e})", file=sys.stderr)
         return 1
 
+    # Retrocompat: si el ledger viene de una auditoria ya corrida con una version
+    # anterior del plugin (schema viejo y/o ids de recoleccion VULN-101/VULN-209
+    # sin canonicalizar), generar el informe lo deja al dia — no hace falta que
+    # el usuario corra primero /vuln-hunter:resume ni sepa que `ledger.py migrate`
+    # existe. migrate() es idempotente: si ya estaba al dia, no se re-escribe nada.
+    raw_snapshot = json.dumps(L, sort_keys=True)
+    before_ids = {f.get("id") for f in L.get("findings", []) if isinstance(f, dict)}
+    L = _ledger.migrate(L)
+    if json.dumps(L, sort_keys=True) != raw_snapshot:
+        after_ids = {f.get("id") for f in L.get("findings", []) if isinstance(f, dict)}
+        try:
+            _ledger.atomic_write_json(ledger_path, L)
+        except Exception as e:
+            print(f"vuln-hunter: no se pudo re-escribir el ledger migrado ({e}), sigo con la version en memoria",
+                  file=sys.stderr)
+        else:
+            renumbered = len(before_ids - after_ids)
+            if renumbered:
+                print(f"vuln-hunter: {renumbered} id(s) de una auditoria anterior canonicalizados "
+                      f"(VULN-101 -> VULN-001...) en {ledger_path}")
+            else:
+                print(f"vuln-hunter: ledger migrado a schema {_ledger.CURRENT_SCHEMA} en {ledger_path}")
+
+    # Contrato de nombres (fijo): B.md, B.html/B.pdf = tecnico (back-compat,
+    # panel/app.jsx ya apunta aqui), B-executive.html/B-executive.pdf = nuevo.
     md_path = base + ".md"
     html_path = base + ".html"
     pdf_path = base + ".pdf"
+    exec_html_path = base + "-executive.html"
+    exec_pdf_path = base + "-executive.pdf"
     md_name = os.path.basename(md_path)
     pdf_name = os.path.basename(pdf_path)
+    exec_pdf_name = os.path.basename(exec_pdf_path)
+    tech_html_name = os.path.basename(html_path)
 
     os.makedirs(os.path.dirname(os.path.abspath(base)), exist_ok=True)
 
@@ -893,24 +1859,35 @@ def main():
     with open(md_path, "w") as fh:
         fh.write(md_text)
 
-    # PDF primero (necesita el HTML); generamos un HTML temporal de contenido,
-    # luego el HTML final ya sabe si el PDF existe para mostrar el enlace.
     with open(html_path, "w") as fh:
-        fh.write(build_html(md_text, False, md_name, pdf_name, L))
+        fh.write(build_html(md_text, False, md_name, pdf_name, L, mode="technical"))
+    with open(exec_html_path, "w") as fh:
+        fh.write(build_executive_html(L, md_name, exec_pdf_name, tech_html_name))
+
     tool = try_pdf(html_path, pdf_path)
     if tool:
         with open(html_path, "w") as fh:
-            fh.write(build_html(md_text, True, md_name, pdf_name, L))
+            fh.write(build_html(md_text, True, md_name, pdf_name, L, mode="technical"))
+
+    tool_exec = try_pdf(exec_html_path, exec_pdf_path)
+    if tool_exec:
+        with open(exec_html_path, "w") as fh:
+            fh.write(build_executive_html(L, md_name, exec_pdf_name, tech_html_name, has_pdf=True))
 
     n = len(L.get("findings", []))
     print(f"vuln-hunter: informe escrito ({n} hallazgos)")
-    print(f"  markdown: {md_path}")
-    print(f"  html:     {html_path}  (boton 'Descargar PDF' = imprimir a PDF)")
+    print(f"  markdown:          {md_path}")
+    print(f"  html (técnico):    {html_path}  (boton 'Descargar PDF' = imprimir a PDF)")
     if tool:
-        print(f"  pdf:      {pdf_path}  (via {tool})")
+        print(f"  pdf (técnico):     {pdf_path}  (via {tool})")
     else:
-        print("  pdf:      no se generó (sin weasyprint/wkhtmltopdf/Chrome). "
+        print("  pdf (técnico):     no se generó (sin weasyprint/wkhtmltopdf/Chrome). "
               "Abre el HTML y usa 'Descargar PDF' (Cmd/Ctrl+P → Guardar como PDF).")
+    print(f"  html (ejecutivo):  {exec_html_path}")
+    if tool_exec:
+        print(f"  pdf (ejecutivo):   {exec_pdf_path}  (via {tool_exec})")
+    else:
+        print("  pdf (ejecutivo):   no se generó (sin weasyprint/wkhtmltopdf/Chrome).")
     return 0
 
 

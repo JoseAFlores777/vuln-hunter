@@ -34,6 +34,31 @@ class TestMigrate(unittest.TestCase):
         twice = ledger.migrate(dict(once))
         self.assertEqual(once, twice)
 
+    def test_retrocompat_canonicalizes_ids_of_an_already_audited_repo(self):
+        # Simula un repo que ya corrio una auditoria completa con una version
+        # anterior del plugin (ids de recoleccion VULN-1xx/2xx sin canonicalizar,
+        # schema viejo). Actualizar el plugin y volver a tocar el ledger con
+        # `migrate` (lo que ya hacen /hunt, /resume, /rescan y ahora tambien
+        # report.py) debe dejarlo canonico sin ningun paso manual.
+        old_repo_ledger = {
+            "schema_version": "1.0",
+            "findings": [
+                {"id": "VULN-101", "title": "SQLi", "status": "closed",
+                 "verification": {"verdict": "CLOSED"}},
+                {"id": "VULN-201", "title": "Django CVE", "status": "triaged",
+                 "triage": {"priority": "P0"}},
+            ],
+        }
+        L = ledger.migrate(old_repo_ledger)
+        ids = sorted(f["id"] for f in L["findings"])
+        self.assertEqual(ids, ["VULN-001", "VULN-002"])
+        self.assertEqual(L["schema_version"], ledger.CURRENT_SCHEMA)
+        # el estado/veredicto de la auditoria pasada no se pierde
+        by_title = {f["title"]: f for f in L["findings"]}
+        self.assertEqual(by_title["SQLi"]["status"], "closed")
+        self.assertEqual(by_title["SQLi"]["verification"]["verdict"], "CLOSED")
+        self.assertEqual(by_title["SQLi"]["origin_id"], "VULN-101")
+
 
 class TestResumePoint(unittest.TestCase):
     def _rp(self, findings, **kw):
@@ -88,6 +113,71 @@ class TestResumePoint(unittest.TestCase):
         for stage in ["detect", "RECON", "SAST", "RED-TEAM", "TRIAGE", "plan"]:
             self.assertIn(stage, rp["completed"])
         self.assertNotIn("VERIFY", rp["completed"])
+
+
+class TestRenumber(unittest.TestCase):
+    def test_sequential_increasing_from_001(self):
+        L = {"findings": [
+            {"id": "VULN-107", "title": "SSRF"},
+            {"id": "VULN-101", "title": "SQLi"},
+            {"id": "VULN-201", "title": "Django CVE"},
+        ]}
+        out = ledger.renumber(L)
+        ids = [f["id"] for f in out["findings"]]
+        self.assertEqual(sorted(ids), ["VULN-001", "VULN-002", "VULN-003"])
+
+    def test_orders_by_collection_id_not_list_order(self):
+        # VULN-101 se descubrio antes que VULN-107 y VULN-201 aunque el ledger
+        # los liste en otro orden -> debe quedar VULN-001.
+        L = {"findings": [
+            {"id": "VULN-201", "title": "Django CVE"},
+            {"id": "VULN-107", "title": "SSRF"},
+            {"id": "VULN-101", "title": "SQLi"},
+        ]}
+        out = ledger.renumber(L)
+        by_title = {f["title"]: f["id"] for f in out["findings"]}
+        self.assertEqual(by_title["SQLi"], "VULN-001")
+        self.assertEqual(by_title["SSRF"], "VULN-002")
+        self.assertEqual(by_title["Django CVE"], "VULN-003")
+
+    def test_preserves_origin_id(self):
+        L = {"findings": [{"id": "VULN-101", "title": "SQLi"}]}
+        out = ledger.renumber(L)
+        self.assertEqual(out["findings"][0]["origin_id"], "VULN-101")
+        self.assertEqual(out["findings"][0]["id"], "VULN-001")
+
+    def test_idempotent_does_not_renumber_twice(self):
+        L = {"findings": [{"id": "VULN-101", "title": "SQLi"}]}
+        once = ledger.renumber(L)
+        twice = ledger.renumber(once)
+        self.assertEqual(once, twice)
+        self.assertEqual(twice["findings"][0]["id"], "VULN-001")
+        self.assertEqual(twice["findings"][0]["origin_id"], "VULN-101")
+
+    def test_incremental_new_findings_continue_the_sequence(self):
+        # Un finding creado al vuelo (p.ej. appsec-fixer pide un SCA nuevo)
+        # despues de un renumber previo debe seguir la secuencia, no chocar.
+        L = {"findings": [{"id": "VULN-101", "title": "SQLi"}]}
+        after_first = ledger.renumber(L)
+        after_first["findings"].append({"id": "VULN-205", "title": "New CVE"})
+        out = ledger.renumber(after_first)
+        ids = {f["title"]: f["id"] for f in out["findings"]}
+        self.assertEqual(ids["SQLi"], "VULN-001")
+        self.assertEqual(ids["New CVE"], "VULN-002")
+
+    def test_remaps_dedup_of_to_new_id(self):
+        L = {"findings": [
+            {"id": "VULN-101", "title": "SQLi A"},
+            {"id": "VULN-102", "title": "SQLi B", "triage": {"dedup_of": "VULN-101"}},
+        ]}
+        out = ledger.renumber(L)
+        self.assertEqual(out["findings"][1]["triage"]["dedup_of"], "VULN-001")
+
+    def test_nondict_findings_do_not_crash(self):
+        L = {"findings": ["poison", {"id": "VULN-101", "title": "SQLi"}]}
+        out = ledger.renumber(L)
+        real = [f for f in out["findings"] if isinstance(f, dict)]
+        self.assertEqual(real[0]["id"], "VULN-001")
 
 
 class TestFindingsUnder(unittest.TestCase):
