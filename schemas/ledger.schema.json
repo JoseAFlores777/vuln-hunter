@@ -93,7 +93,8 @@
               "cvss": { "type": "number" },
               "cvss_version": { "type": "string", "enum": ["3.1", "4.0"] },
               "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "FILTERED"] },
-              "dedup_of": { "type": "array", "items": { "type": "string" } },
+              "dedup_of": { "type": "string", "description": "id del hallazgo del que este es duplicado. Declarado string (no array): asi lo escriben triage-judge y ledger.py:renumber() en produccion." },
+              "cvss_score": { "type": "number", "description": "alias real de `cvss` visto en produccion (triage-judge); report.py acepta ambos via cvss_of()." },
               "rationale": { "type": "string" }
             }
           },

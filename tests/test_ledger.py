@@ -60,6 +60,81 @@ class TestMigrate(unittest.TestCase):
         self.assertEqual(by_title["SQLi"]["origin_id"], "VULN-101")
 
 
+class TestStaleIdReferencesInFreeText(unittest.TestCase):
+    """Auditoria real: triage.rationale citaba otros hallazgos por su id
+    de ANTES de renumerar ("refutado en VULN-103") — tras renumber(), esos ids
+    ya no existian en ningun lado del informe (57 de 64 menciones reales
+    verificadas, en 9 campos distintos, no solo rationale). renumber() ya
+    calculaba el remap completo pero solo lo aplicaba a triage.dedup_of."""
+
+    def test_rationale_mention_gets_rewritten(self):
+        L = {"findings": [
+            {"id": "VULN-101", "title": "A", "status": "triaged", "triage": {"priority": "P1"}},
+            {"id": "VULN-102", "title": "B", "status": "filtered",
+             "triage": {"priority": "N/A", "rationale": "Duplicado, refutado en VULN-101 y VULN-103."}},
+        ]}
+        out = ledger.renumber(L)
+        by_title = {f["title"]: f for f in out["findings"]}
+        # VULN-101 -> VULN-001 (existe); VULN-103 no existe en este ledger y
+        # NO esta en el remap -> se deja igual (no se inventa una correspondencia).
+        self.assertIn("VULN-001", by_title["B"]["triage"]["rationale"])
+        self.assertIn("VULN-103", by_title["B"]["triage"]["rationale"])
+        self.assertNotIn("VULN-101", by_title["B"]["triage"]["rationale"])
+
+    def test_generic_sweep_fixes_fields_not_on_an_explicit_allowlist(self):
+        # related/superseded_by/dedup/dedup_of_all: ninguno declarado en el
+        # schema, pero los agentes reales los escriben. El barrido es
+        # recursivo (no una lista cerrada de nombres de campo), asi que los
+        # corrige a todos sin que report.py necesite conocerlos.
+        L = {"findings": [
+            {"id": "VULN-101", "title": "A", "status": "triaged", "triage": {"priority": "P1"}},
+            {"id": "VULN-102", "title": "B", "status": "filtered", "triage": {"priority": "N/A"},
+             "related": ["VULN-101"], "superseded_by": "VULN-101",
+             "dedup_of_all": ["VULN-101"], "custom_future_field": {"nested": ["ver VULN-101"]}},
+        ]}
+        out = ledger.renumber(L)
+        b = {f["title"]: f for f in out["findings"]}["B"]
+        self.assertEqual(b["related"], ["VULN-001"])
+        self.assertEqual(b["superseded_by"], "VULN-001")
+        self.assertEqual(b["dedup_of_all"], ["VULN-001"])
+        self.assertIn("VULN-001", b["custom_future_field"]["nested"][0])
+
+    def test_id_and_origin_id_fields_are_never_rewritten(self):
+        L = {"findings": [{"id": "VULN-101", "title": "A", "status": "triaged",
+                           "triage": {"priority": "P1"}, "notes": "self-ref VULN-101"}]}
+        out = ledger.renumber(L)
+        f = out["findings"][0]
+        self.assertEqual(f["id"], "VULN-001")
+        self.assertEqual(f["origin_id"], "VULN-101")  # el id VIEJO, intacto
+        self.assertEqual(f["notes"], "self-ref VULN-001")  # pero el texto SI se actualiza
+
+    def test_retroactively_heals_a_ledger_canonicalized_before_this_fix(self):
+        # Simula el caso real: un ledger que YA paso por renumber() (origin_id
+        # ya asignado) pero cuyo texto libre quedo con referencias rotas de
+        # ANTES de que este fix existiera. Un migrate() posterior (sin
+        # findings nuevos que renombrar) debe sanar el texto igual.
+        already_canonical = {
+            "findings": [
+                {"id": "VULN-001", "origin_id": "VULN-101", "title": "A", "status": "triaged",
+                 "triage": {"priority": "P1"}},
+                {"id": "VULN-002", "origin_id": "VULN-102", "title": "B", "status": "filtered",
+                 "triage": {"priority": "N/A", "rationale": "Duplicado de VULN-101."}},
+            ]
+        }
+        out = ledger.migrate(already_canonical)
+        by_title = {f["title"]: f for f in out["findings"]}
+        self.assertIn("VULN-001", by_title["B"]["triage"]["rationale"])
+        self.assertNotIn("VULN-101", by_title["B"]["triage"]["rationale"])
+        # idempotente: una segunda pasada no cambia nada mas
+        again = ledger.migrate(out)
+        self.assertEqual(out, again)
+
+    def test_noop_when_nothing_ever_renumbered(self):
+        L = {"findings": [{"id": "V1", "title": "A", "status": "hypothesis", "notes": "sin ids aca"}]}
+        out = ledger.renumber(dict(L))
+        self.assertEqual(out["findings"][0]["notes"], "sin ids aca")
+
+
 class TestResumePoint(unittest.TestCase):
     def _rp(self, findings, **kw):
         L = {"findings": findings}

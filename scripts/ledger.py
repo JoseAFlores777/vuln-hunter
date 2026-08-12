@@ -159,6 +159,39 @@ def findings_under(ledger, path):
 
 _CANON_ID_RE = re.compile(r"^VULN-\d+$")
 _TRAILING_NUM_RE = re.compile(r"(\d+)$")
+_VULN_ID_RE = re.compile(r"\bVULN-\d+\b")
+
+
+def _remap_ids_in_value(value, remap):
+    """Sustituye toda mencion de un id viejo por el nuevo dentro de CUALQUIER
+    string anidado (listas/dicts/valores sueltos), no solo `dedup_of`. Vista en
+    produccion: triage-judge/redteam-whitehat escriben campos libres NO
+    declarados en el schema (dedup, dedup_of_all, related, superseded_by,
+    exploitability.impacto, etc.) que citan otros hallazgos por id EN PROSA
+    ("refutado en VULN-103") — mantener una lista cerrada de nombres de campo
+    para sustituir siempre se queda corta ante el proximo campo que un agente
+    invente, asi que en vez de eso se barre TODO recursivamente. Los ids que no
+    esten en `remap` (ya canonicos, o de otro run) quedan iguales."""
+    if isinstance(value, str):
+        if "VULN-" not in value:
+            return value
+        return _VULN_ID_RE.sub(lambda m: remap.get(m.group(0), m.group(0)), value)
+    if isinstance(value, list):
+        return [_remap_ids_in_value(v, remap) for v in value]
+    if isinstance(value, dict):
+        return {k: _remap_ids_in_value(v, remap) for k, v in value.items()}
+    return value
+
+
+def _remap_ids_in_finding(f, remap):
+    """Aplica _remap_ids_in_value a todos los campos del finding EXCEPTO
+    id/origin_id: `id` ya es el nuevo id (no se toca), y `origin_id` debe
+    conservar el id de recoleccion viejo tal cual (es su proposito: nunca se
+    reescribe)."""
+    for k in list(f.keys()):
+        if k in ("id", "origin_id"):
+            continue
+        f[k] = _remap_ids_in_value(f[k], remap)
 
 
 def renumber(ledger):
@@ -175,14 +208,24 @@ def renumber(ledger):
     El id original queda en `origin_id` (nunca se pierde, para trazabilidad con
     activity.jsonl: las lineas de log ya escritas con el id de recoleccion no se
     reescriben — es un log append-only — asi que conservan el id que tenian en
-    ese instante). Si `triage.dedup_of` apuntaba al id viejo de un finding que se
-    esta renumerando, se actualiza al nuevo id."""
+    ese instante).
+
+    Cualquier mencion de un id viejo en CUALQUIER campo de texto (no solo
+    `triage.dedup_of`) se reescribe al id nuevo — ver _remap_ids_in_finding.
+    Esto corre con el mapa COMPLETO de ids-ya-renombrados (los de esta pasada
+    + los de pasadas anteriores, reconstruido desde `origin_id`), no solo los
+    nuevos de esta llamada: asi tambien sana RETROACTIVAMENTE un ledger que ya
+    fue canonicalizado antes de que esta reescritura de texto existiera (visto
+    en produccion: referencias rotas tipo "Ver VULN-103" que ya no resuelven a
+    ningun id vigente). Es un no-op si no hay nada que corregir."""
     findings = [f for f in ledger.get("findings", []) if isinstance(f, dict)]
 
     max_n = 0
+    full_remap = {}
     for f in findings:
         if f.get("origin_id") and _CANON_ID_RE.match(f.get("id") or ""):
             max_n = max(max_n, int(f["id"].split("-", 1)[1]))
+            full_remap[f["origin_id"]] = f["id"]
 
     pending = [f for f in findings if not f.get("origin_id")]
 
@@ -192,20 +235,17 @@ def renumber(ledger):
 
     pending.sort(key=_discovery_key)
 
-    remap = {}
     for f in pending:
         max_n += 1
         old_id = f.get("id")
         new_id = f"VULN-{max_n:03d}"
-        remap[old_id] = new_id
+        full_remap[old_id] = new_id
         f["origin_id"] = old_id
         f["id"] = new_id
 
-    if remap:
+    if full_remap:
         for f in findings:
-            tri = f.get("triage")
-            if isinstance(tri, dict) and tri.get("dedup_of") in remap:
-                tri["dedup_of"] = remap[tri["dedup_of"]]
+            _remap_ids_in_finding(f, full_remap)
 
     return ledger
 
