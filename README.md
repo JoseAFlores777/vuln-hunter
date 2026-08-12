@@ -90,23 +90,36 @@ La versión vive en un solo lugar lógico y se mantiene sincronizada en los tres
 campos que Claude Code lee (`plugin.json:version`, `marketplace.json:metadata.version`
 y `marketplace.json:plugins[].version`) con `scripts/bump-version.py`.
 
-**Releasea SIEMPRE con `scripts/release.sh` — NO tagues a mano.** El CI ya no
-escribe en `main`: el tag debe traer los manifests ya en la versión correcta, así
-que un `git tag` manual (sin sincronizar) **falla el release**.
+**Dos formas de releasear — ambas terminan en el mismo resultado.**
 
+**A) `scripts/release.sh` (la más prolija):**
 ```bash
 scripts/release.sh 2.1.0
 ```
 El script (lo corres tú en tu terminal): sincroniza `2.1.0` en los manifests,
 **commitea** ese sync a `main`, hace **push de main** y crea+empuja el tag `v2.1.0`
-sobre ese commit. Así el tag = lo testeado = lo publicado.
+sobre ese commit. Así el tag = lo testeado = lo publicado, y el commit de sync
+queda atribuido a tu identidad git.
 
-El workflow `Release` (`.github/workflows/release.yml`) entonces, **sin tocar main**:
-1. Hace checkout del **tag**, valida que sea ancestro de `main` (provenance).
-2. Comprueba que los manifests del tag estén en la versión del tag
-   (`bump-version.py --check`); si tagueaste a mano, aquí **falla** y te dice que uses
-   `release.sh`.
-3. Corre la suite de tests sobre el árbol del tag.
+**B) Solo tag + push (el pipeline sincroniza si hace falta):**
+```bash
+git tag v2.1.0 && git push origin v2.1.0
+```
+Si los manifests del tag ya están en `2.1.0` (p.ej. porque usaste A), el
+pipeline no toca `main`. Si NO lo están (tagueaste a mano sin sincronizar), el
+pipeline sincroniza los manifests, **commitea a `main` él mismo**
+(`github-actions[bot]`) y **mueve el tag** al commit sincronizado antes de
+publicar — sin que tengas que hacer nada más. La superficie de escritura de CI
+a `main` es angosta a propósito: lo único que puede tocar es
+`scripts/bump-version.py` (determinista, sin red, 3 campos de versión en 2 JSON).
+
+El workflow `Release` (`.github/workflows/release.yml`) entonces:
+1. Hace checkout del **tag**, valida que sea ancestro de `main` (provenance) —
+   esto corre siempre sobre el commit *original* del tag, se sincronice después
+   o no, así que un tag a un árbol ajeno/sin revisar sigue fallando igual.
+2. Si los manifests del tag no están en la versión del tag
+   (`bump-version.py --check`), los sincroniza en `main` y mueve el tag ahí (ver B).
+3. Corre la suite de tests sobre el árbol que se va a publicar.
 4. Publica el **GitHub Release** con notas autogeneradas.
 
 Si te equivocaste y empujaste un tag a mano: bórralo

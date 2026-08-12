@@ -2,7 +2,15 @@
 # vuln-hunter :: release.sh <X.Y.Z>
 # Sincroniza la version en los manifests, COMMITEA ese sync en main, y empuja main
 # + el tag vX.Y.Z. Asi el tag ya lleva la version correcta y el workflow Release
-# (GitHub Actions) solo VALIDA y publica: el CI nunca escribe en main.
+# (GitHub Actions) solo VALIDA y publica, sin tocar main.
+#
+# OPCIONAL desde que el workflow Release sabe sincronizar el solo: si en vez de
+# esto haces `git tag vX.Y.Z && git push origin vX.Y.Z` a mano, el pipeline
+# detecta que los manifests no traen la version, sincroniza y commitea el a
+# main, mueve el tag al commit sincronizado, y publica — sin que hagas nada
+# mas. Este script sigue siendo la forma mas prolija (el commit de sync queda
+# atribuido a tu identidad git y sucede ANTES del push, no en un segundo paso
+# desde CI), pero ya no es obligatorio para que el release funcione.
 #
 # Lo ejecuta la PERSONA en su terminal (no Claude): commitea el sync de release a
 # main de forma deliberada. (El hook guard-commit de Claude Code solo corre dentro

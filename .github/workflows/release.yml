@@ -1,16 +1,32 @@
 name: Release
 
-# Disparado al empujar un tag vX.Y.Z (ver scripts/release.sh).
-# El sync de version a los manifests lo hace scripts/release.sh ANTES de taggear
-# (localmente, por la persona). Este workflow NO muta main: solo valida el arbol
-# del tag, corre tests sobre ese arbol exacto y publica el GitHub Release.
+# Disparado al empujar un tag vX.Y.Z. Punto de entrada UNICO para releasear:
+# `git tag vX.Y.Z && git push origin vX.Y.Z` (o `scripts/release.sh X.Y.Z`,
+# que ademas sincroniza localmente primero — sigue funcionando igual).
+#
+# Si el tag YA trae los manifests sincronizados (p.ej. via release.sh), este
+# workflow no toca main: solo valida, testea y publica.
+#
+# Si el tag NO los trae (p.ej. `git tag` a mano), este workflow sincroniza
+# `main` el mismo y MUEVE el tag al commit sincronizado, para que "tag + push"
+# sea el unico paso manual. La superficie de escritura a main es deliberadamente
+# angosta: lo UNICO que puede cambiar ese commit es scripts/bump-version.py
+# (determinista, sin red, sin LLM, 3 campos de version en 2 archivos JSON) —
+# nada mas del pipeline tiene permiso ni motivo para tocar otro archivo.
+#
+# Nota de seguridad (por que esto no es un loop infinito ni un riesgo de
+# provenance): GitHub Actions NO dispara un nuevo workflow run cuando el push
+# lo hace el propio GITHUB_TOKEN del job (salvaguarda estandar contra loops
+# recursivos) — el `git push --force` del tag movido de abajo no re-dispara
+# este mismo workflow. Y el chequeo de provenance sigue corriendo SIEMPRE sobre
+# el commit ORIGINAL del tag (antes de moverlo): un tag que no sea ancestro de
+# `main` sigue fallando igual que antes, así que esto no abre la puerta a
+# publicar un arbol ajeno/sin revisar.
 on:
   push:
     tags:
       - "v*.*.*"
 
-# Solo se necesita escritura para publicar el Release (gh release). NO se hace
-# push a ninguna branch: este workflow no escribe codigo en main.
 permissions:
   contents: write
 
@@ -18,7 +34,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout del tag (el arbol que se publica)
+      - name: Checkout del tag (arbol original, para el chequeo de provenance)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.ref }}
@@ -41,24 +57,40 @@ jobs:
 
       - name: El tag debe apuntar a un commit de main (provenance)
         run: |
-          # El tag no puede apuntar a un commit ajeno/sin revisar: exigimos que sea
-          # ancestro de origin/main para que el arbol publicado venga de main.
+          # Corre SIEMPRE sobre el commit ORIGINAL del tag (antes de cualquier
+          # sync/move del siguiente paso): un tag que apunte a un arbol ajeno o
+          # sin revisar sigue fallando aqui, se sincronice o no despues.
           git fetch origin main --quiet
           if ! git merge-base --is-ancestor "${GITHUB_REF_NAME}^{commit}" origin/main; then
             echo "::error::El tag ${GITHUB_REF_NAME} no esta en main; taggea solo commits de main"
             exit 1
           fi
 
-      - name: Los manifests del tag ya deben tener la version (sync local)
+      - name: Sincroniza version a main y mueve el tag (solo si hacia falta)
         run: |
-          # release.sh sincroniza y commitea la version ANTES de taggear. Si el tag
-          # no la lleva, falla: NO la arreglamos aqui (no mutamos main desde CI).
-          if ! python3 scripts/bump-version.py --check "${{ steps.ver.outputs.version }}"; then
-            echo "::error::Los manifests del tag no estan en ${{ steps.ver.outputs.version }}. Usa scripts/release.sh para sincronizar y taggear."
+          if python3 scripts/bump-version.py --check "${{ steps.ver.outputs.version }}"; then
+            echo "manifests del tag ya estan en ${{ steps.ver.outputs.version }} — nada que sincronizar"
+            exit 0
+          fi
+          echo "manifests del tag NO estan en ${{ steps.ver.outputs.version }} — sincronizando en main"
+          git checkout -B main origin/main
+          python3 scripts/bump-version.py "${{ steps.ver.outputs.version }}"
+          if [ -z "$(git status --porcelain .claude-plugin)" ]; then
+            echo "::error::bump-version no cambio nada pero el check --check fallo antes; estado inconsistente"
             exit 1
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git commit -m "chore(release): v${{ steps.ver.outputs.version }} sync manifests [auto]"
+          git push origin main
+          git tag -f "${GITHUB_REF_NAME}"
+          git push origin "${GITHUB_REF_NAME}" --force
 
-      - name: Tests (sobre el arbol del tag)
+      - name: Los manifests deben quedar en la version del tag (defensa en profundidad)
+        run: python3 scripts/bump-version.py --check "${{ steps.ver.outputs.version }}"
+
+      - name: Tests (sobre el arbol que se publica)
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Crear / actualizar GitHub Release
