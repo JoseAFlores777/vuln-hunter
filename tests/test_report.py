@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import report  # noqa: E402
@@ -295,6 +296,115 @@ class TestReportRetrocompat(unittest.TestCase):
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertNotIn("canonicalizados", second.stdout)
             self.assertNotIn("migrado", second.stdout)
+
+
+class TestPdfEnginePreference(unittest.TestCase):
+    """weasyprint no renderiza fiel el CSS Grid del informe (confirmado
+    visualmente: recorta graficos y pierde/superpone las facets de las cards).
+    Chrome/Chromium/Edge headless si lo soporta -> debe preferirse SIEMPRE que
+    este disponible, con weasyprint/wkhtmltopdf solo como fallback."""
+
+    def _fake_run_writes_pdf(self, pdf_path):
+        def _run(cmd, check=False, capture_output=False, timeout=None):
+            with open(pdf_path, "wb") as fh:
+                fh.write(b"%PDF-1.4 fake\n")
+            return mock.Mock(returncode=0)
+        return _run
+
+    def test_prefers_chrome_over_weasyprint_when_both_available(self):
+        with tempfile.TemporaryDirectory() as d:
+            html_path = os.path.join(d, "r.html")
+            pdf_path = os.path.join(d, "r.pdf")
+            with open(html_path, "w") as fh:
+                fh.write("<html></html>")
+
+            def fake_which(name):
+                return f"/usr/bin/{name}" if name in ("weasyprint", "wkhtmltopdf") else None
+
+            with mock.patch.object(report, "_find_chrome", return_value="/usr/bin/google-chrome"), \
+                 mock.patch.object(report.shutil, "which", side_effect=fake_which), \
+                 mock.patch.object(report.subprocess, "run", side_effect=self._fake_run_writes_pdf(pdf_path)):
+                tool = report.try_pdf(html_path, pdf_path)
+            self.assertEqual(tool, "google-chrome")
+
+    def test_falls_back_to_weasyprint_when_no_chrome_available(self):
+        with tempfile.TemporaryDirectory() as d:
+            html_path = os.path.join(d, "r.html")
+            pdf_path = os.path.join(d, "r.pdf")
+            with open(html_path, "w") as fh:
+                fh.write("<html></html>")
+
+            def fake_which(name):
+                return "/usr/bin/weasyprint" if name == "weasyprint" else None
+
+            with mock.patch.object(report, "_find_chrome", return_value=None), \
+                 mock.patch.object(report.shutil, "which", side_effect=fake_which), \
+                 mock.patch.object(report.subprocess, "run", side_effect=self._fake_run_writes_pdf(pdf_path)):
+                tool = report.try_pdf(html_path, pdf_path)
+            self.assertEqual(tool, "weasyprint")
+
+
+class TestFindingsTableLayout(unittest.TestCase):
+    """La tabla 1.2 debe tener anchos de columna explicitos (<col>) y clamp de
+    titulo/ubicacion: sin esto, 9 columnas a ancho igual dejan Titulo tan angosto
+    que el texto se envuelve palabra por palabra e infla la tabla verticalmente
+    (confirmado visualmente: una tabla de 19 filas ocupaba >10 paginas)."""
+
+    def setUp(self):
+        L = {"findings": [{"id": "V1", "title": "Un titulo bastante largo para forzar el wrap de la columna angosta",
+                           "location": "apps/acme/very/long/path/to/module.py:123", "status": "hypothesis",
+                           "triage": {"priority": "P1", "cvss": 7.1}}]}
+        self.html = report.build_findings_table_html(L)
+
+    def test_table_has_explicit_column_widths(self):
+        self.assertIn("<colgroup>", self.html)
+        self.assertIn('<col style="width:', self.html)
+
+    def test_title_and_location_use_clamp_class(self):
+        self.assertEqual(self.html.count('class="tclamp"'), 2)
+
+    def test_full_title_preserved_in_tooltip(self):
+        self.assertIn("title=\"Un titulo bastante largo", self.html)
+
+
+class TestActionChipNoWrap(unittest.TestCase):
+    """El chip de id en el plan de accion ejecutivo no debe poder envolverse
+    letra por letra (confirmado visualmente: el flex sin flex-shrink:0 en el
+    <code> del id lo comprimia hasta partir 'VULN-001' en una columna vertical
+    de un caracter por linea)."""
+
+    def setUp(self):
+        L = {"findings": [{"id": "VULN-001", "title": "SQLi", "status": "hypothesis",
+                           "triage": {"priority": "P0"}}]}
+        md = report.build_md(L, "x")
+        self.html = report.build_executive_html(L, "r.md", "r-executive.pdf", "r.html")
+
+    def test_id_and_title_are_separate_elements(self):
+        self.assertIn('class="idtag"', self.html)
+        self.assertIn('class="actiontxt"', self.html)
+
+    def test_css_prevents_id_chip_from_shrinking(self):
+        self.assertIn(".actionchip .idtag{flex:0 0 auto;white-space:nowrap}", self.html)
+
+
+class TestOwaspChartStackedBySeverity(unittest.TestCase):
+    """El grafico OWASP debe mostrar la mezcla de severidad por categoria, no
+    solo el conteo total (un P0 y cinco P3 en la misma categoria no deberian
+    verse igual de 'urgentes' en el vistazo)."""
+
+    def test_bar_has_one_segment_per_severity_present(self):
+        findings = [
+            {"owasp_2025": "A03:2025-Injection", "triage": {"priority": "P0"}},
+            {"owasp_2025": "A03:2025-Injection", "triage": {"priority": "P0"}},
+            {"owasp_2025": "A03:2025-Injection", "triage": {"priority": "P3"}},
+        ]
+        out = report._svg_bars_owasp(findings)
+        self.assertEqual(out.count("bar-seg"), 2)  # un segmento por severidad presente (P0, P3)
+        self.assertIn("P0: 2", out)
+        self.assertIn("P3: 1", out)
+
+    def test_empty_findings_does_not_crash(self):
+        self.assertIn("sin datos", report._svg_bars_owasp([]))
 
 
 if __name__ == "__main__":

@@ -12,8 +12,10 @@ listos para descargar desde el panel:
                              plan de accion, con link permanente al tecnico)
 
 El .html imprimible tiene boton "Descargar PDF" -> imprimir a PDF. El .pdf solo
-se genera si hay un convertidor disponible (weasyprint / wkhtmltopdf / Chrome|
-Chromium|Edge headless); si no, se omite y se usa el boton del HTML.
+se genera si hay un convertidor disponible: se PREFIERE Chrome|Chromium|Edge
+headless (el CSS del informe usa Grid moderno que weasyprint no renderiza fiel,
+ver try_pdf()); si no hay ninguno, cae a weasyprint / wkhtmltopdf. Si no hay
+ningun convertidor, se omite el .pdf y se usa el boton del HTML.
 
 Estructura del informe (comun a .md y a ambos .html):
     1. Auditoria y diagnostico  (superficie, hallazgos, diagnostico por hallazgo)
@@ -653,23 +655,48 @@ def _svg_donut(by_prio):
     )
 
 
-def _svg_bars(pairs, color=HUD["cyan"]):
-    """Barras horizontales (categoria OWASP -> conteo). Cada fila filtra por texto
-    (reusa la busqueda compartida, ver interactivity_spec)."""
-    if not pairs:
+def _svg_bars_owasp(findings, top_n=8):
+    """Barras horizontales por categoria OWASP, APILADAS por severidad — no solo
+    'cuantos hay' sino 'cuantos de esos son P0/P1 urgentes vs backlog', que es lo
+    que de verdad hace falta para priorizar de un vistazo. Cada fila filtra por
+    texto (reusa la busqueda compartida, ver interactivity_spec)."""
+    owc = {}
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        k = f.get("owasp_2025") or f.get("owasp_2021") or "—"
+        bucket = owc.setdefault(k, {"total": 0, "by_prio": {}})
+        bucket["total"] += 1
+        p = prio_of(f)
+        bucket["by_prio"][p] = bucket["by_prio"].get(p, 0) + 1
+    if not owc:
         return '<p class="muted">— sin datos —</p>'
-    mx = max(n for _, n in pairs) or 1
-    rows = []
+    items = sorted(owc.items(), key=lambda kv: -kv[1]["total"])[:top_n]
+    mx = max(v["total"] for _, v in items) or 1
+    order = ["P0", "P1", "P2", "P3", "FILTERED"]
     bw = 220
-    for name, n in pairs:
-        w = max(3, int(bw * n / mx))
+    rows = []
+    seen_prios = set()
+    for name, data in items:
+        segs = []
+        for p in order:
+            n = data["by_prio"].get(p, 0)
+            if not n:
+                continue
+            seen_prios.add(p)
+            w = max(2, bw * n / mx)
+            segs.append(f'<span class="bar-seg" style="width:{w:.1f}px;background:{esc(PRIO_COLOR.get(p, HUD["ink_mute"]))}" title="{esc(p)}: {n}"></span>')
         rows.append(
             f'<div class="bar" onclick="vhFilterFromChart(\'q\',\'{esc(name)}\')" title="Filtrar por {esc(name)}">'
             f'<span class="bar-l" title="{esc(name)}">{esc(name)}</span>'
-            f'<span class="bar-t"><span class="bar-f" style="width:{w}px;background:{color}"></span></span>'
-            f'<span class="bar-n">{n}</span></div>'
+            f'<span class="bar-t">{"".join(segs)}</span>'
+            f'<span class="bar-n">{data["total"]}</span></div>'
         )
-    return '<div class="bars">' + "".join(rows) + "</div>"
+    legend = "".join(
+        f'<span class="lg"><span class="sw" style="background:{esc(PRIO_COLOR.get(p, HUD["ink_mute"]))}"></span>{esc(p)}</span>'
+        for p in order if p in seen_prios
+    )
+    return '<div class="bars">' + "".join(rows) + '</div><div class="legend">' + legend + '</div>'
 
 
 def _svg_progress(C, total):
@@ -741,13 +768,6 @@ def build_charts_html(L, mode="technical", include_header=True):
     findings = L.get("findings", [])
     C = compute(L)
     total = len(findings)
-    owc = {}
-    for f in findings:
-        if not isinstance(f, dict):
-            continue
-        k = f.get("owasp_2025") or f.get("owasp_2021") or "—"
-        owc[k] = owc.get(k, 0) + 1
-    owpairs = sorted(owc.items(), key=lambda kv: -kv[1])[:8]
     kev = C["kev"]
     lvl, vtext, vcolor = risk_verdict(L)
     verdict_html = (
@@ -775,7 +795,7 @@ def build_charts_html(L, mode="technical", include_header=True):
         chart_grid = (
             '<div class="chart-grid">'
             f'<div class="chart"><div class="chart-t">Por severidad</div><div class="donut">{_svg_donut(C["by_prio"])}</div></div>'
-            f'<div class="chart"><div class="chart-t">Por categoría OWASP</div>{_svg_bars(owpairs, HUD["cyan"])}</div>'
+            f'<div class="chart"><div class="chart-t">Por categoría OWASP · apilado por severidad</div>{_svg_bars_owasp(findings)}</div>'
             f'<div class="chart"><div class="chart-t">Matriz de riesgo · severidad × explotabilidad</div>{_svg_matrix(findings)}</div>'
             f'<div class="chart"><div class="chart-t">Progreso de remediación</div>{_svg_progress(C, total)}</div>'
             f'<div class="chart chart-wide"><div class="chart-t">CVSS × EPSS · hallazgos abiertos</div>{_svg_scatter(findings)}</div>'
@@ -874,13 +894,39 @@ def _search_blob(f):
     return f"{f.get('id','')} {f.get('title','')} {f.get('location','')} {intel.get('package','')} {owc}".lower()
 
 
+EXPL_SHORT = {
+    "EXPLOITABLE": ("EXPL", HUD["red"]),
+    "CONDITIONAL": ("COND", HUD["amber"]),
+    "NOT_EXPLOITABLE": ("NO", HUD["green_soft"]),
+}
+
+
+def _owasp_short(code):
+    """'A03:2025-Injection' -> 'A03:2025': la tabla 1.2 es un indice de escaneo
+    rapido, no el detalle (eso vive en la card 1.3) — el nombre largo de la
+    categoria solo empujaba el ancho de columna sin agregar informacion nueva
+    (ya esta implicito en el codigo A0N)."""
+    if not code or code == "—":
+        return "—"
+    return code.split("-", 1)[0]
+
+
 def build_findings_table_html(L):
     """1.2: tabla real con atributos data-* (sev/status/kev/search) para el filtro
-    compartido, IDs de fila para el click-to-scroll, y <th> click-to-sort."""
+    compartido, IDs de fila para el click-to-scroll, y <th> click-to-sort.
+    Columnas deliberadamente compactas (codigos/badges cortos, no prosa): es un
+    indice de escaneo rapido de TODOS los hallazgos, el detalle completo de cada
+    uno vive en su card de 1.3 (nada se pierde, solo se prioriza aqui la vista
+    general)."""
     findings = L.get("findings", [])
     if not findings:
         return '<p class="muted">Sin hallazgos en el ledger.</p>'
-    heads = ["ID", "Prio", "CVSS", "Título", "Ubicación", "OWASP / CWE", "Explotable", "EPSS", "Estado"]
+    heads = ["ID", "Prio", "CVSS", "Título", "Ubicación", "OWASP / CWE", "Explot.", "EPSS", "Estado"]
+    # table-layout:fixed reparte el ancho segun estas columnas (ver _report_css);
+    # sin esto, 9 columnas a ancho igual dejan Titulo/Ubicacion tan angostas que
+    # el texto se envuelve palabra por palabra (una por linea) — inutilizable.
+    widths = [10, 7, 7, 24, 16, 13, 7, 6, 10]
+    cols = "".join(f'<col style="width:{w}%">' for w in widths)
     ths = "".join(f'<th data-sortcol="{i}">{esc(h)}</th>' for i, h in enumerate(heads))
     rows = []
     for f in sorted_findings(findings):
@@ -892,12 +938,16 @@ def build_findings_table_html(L):
         bucket = bucket_of(f)
         kev = bool(intel.get("in_cisa_kev"))
         badges = ("KEV " if kev else "") + ("RANSOMWARE" if intel.get("known_ransomware_use") else "")
-        owc = f"{f.get('owasp_2025') or f.get('owasp_2021') or '—'} / {f.get('cwe') or '—'}"
-        est = f"{STATUS_LABEL.get(f.get('status'), f.get('status','—'))} / {ver.get('verdict','—')}"
+        owc = f"{_owasp_short(f.get('owasp_2025') or f.get('owasp_2021'))} / {f.get('cwe') or '—'}"
+        expl_verdict = expl.get("verdict")
+        expl_short, expl_color = EXPL_SHORT.get(expl_verdict, (expl_verdict or "—", HUD["ink_mute"]))
+        expl_html = f'<span class="sev" style="color:{esc(expl_color)}" title="{esc(expl_verdict or "—")}">{esc(expl_short)}</span>'
+        est = STATUS_LABEL.get(f.get("status"), f.get("status", "—"))
         epss = intel.get("epss")
         cvss = tri.get("cvss")
         location = f.get("location") or "—"
-        title_html = esc(f.get("title") or "—") + (f' <span class="pill">{esc(badges.strip())}</span>' if badges.strip() else "")
+        title_html = (f'<span class="tclamp" title="{esc(f.get("title") or "—")}">{esc(f.get("title") or "—")}</span>'
+                      + (f' <span class="pill">{esc(badges.strip())}</span>' if badges.strip() else ""))
         rows.append(
             f'<tr class="frow" data-finding-id="{esc(f.get("id","?"))}" data-sev="{esc(prio)}" '
             f'data-status="{esc(bucket)}" data-kev="{1 if kev else 0}" data-search="{esc(_search_blob(f))}">'
@@ -905,14 +955,14 @@ def build_findings_table_html(L):
             f'<td data-sort="{PRIO_ORDER.get(prio,5)}"><span class="sev" style="color:{esc(PRIO_COLOR.get(prio, HUD["ink_mute"]))}">{esc(prio)}</span></td>'
             f'<td data-sort="{cvss if cvss is not None else -1}">{esc(cvss) if cvss is not None else "—"}</td>'
             f'<td>{title_html}</td>'
-            f'<td><code>{esc(location)}</code></td>'
+            f'<td><code class="tclamp">{esc(location)}</code></td>'
             f'<td>{esc(owc)}</td>'
-            f'<td>{esc(expl.get("verdict","—"))}</td>'
+            f'<td data-sort="{esc(expl_verdict or "")}">{expl_html}</td>'
             f'<td data-sort="{epss if epss is not None else -1}">{esc(epss) if epss is not None else "—"}</td>'
             f'<td>{esc(est)}</td>'
             '</tr>'
         )
-    return f'<div class="tablecard"><table id="findings-table"><thead><tr>{ths}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    return f'<div class="tablecard"><table id="findings-table"><colgroup>{cols}</colgroup><thead><tr>{ths}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
 
 
 def _flow_steps(flow):
@@ -1247,9 +1297,15 @@ ul{margin:.4em 0 .8em;padding-left:1.3em} li{margin:.18em 0}
 hr{border:0;border-top:1px solid var(--line);margin:2em 0}
 code{font-family:var(--mono);background:rgba(34,211,238,.08);color:var(--cyan-soft);padding:1px 5px;border-radius:4px;font-size:.86em;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:.9rem;margin:.6em 0 1.1em;table-layout:fixed}
-th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-mute);cursor:pointer;white-space:nowrap}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:break-word}
+th{background:rgba(255,255,255,.02);font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-mute);cursor:pointer;overflow-wrap:break-word}
 .tablecard{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+/* Clamp a 2 lineas con elipsis: evita que un titulo largo en una columna angosta
+   se envuelva palabra-por-palabra e infle la tabla verticalmente. El texto
+   completo sigue en la card de diagnostico (1.3) y en el atributo title=. Motores
+   sin soporte de line-clamp (algunos conversores PDF) simplemente lo envuelven
+   normal dentro de la columna ya ancha por <col> — degrada, no rompe. */
+.tclamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 tr.frow{cursor:pointer}
 tr.frow:hover{background:rgba(34,211,238,.05)}
 .hide{display:none !important}
@@ -1273,8 +1329,9 @@ tr.frow:hover{background:rgba(34,211,238,.05)}
 .bars{display:flex;flex-direction:column;gap:7px}
 .bar{display:grid;grid-template-columns:120px 1fr 28px;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;cursor:pointer}
 .bar-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft)}
-.bar-t{background:rgba(255,255,255,.05);border-radius:5px;overflow:hidden;height:14px}
+.bar-t{display:flex;background:rgba(255,255,255,.05);border-radius:5px;overflow:hidden;height:14px}
 .bar-f{display:block;height:14px;border-radius:5px}
+.bar-seg{display:block;height:14px;flex:0 0 auto}
 .bar-n{text-align:right;color:var(--ink-mute)}
 .muted{color:var(--ink-mute);font-style:italic}
 
@@ -1409,7 +1466,9 @@ details[open]>.dhead::after{transform:rotate(90deg)}
 .eyebrow{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:2.2px;text-transform:uppercase;color:var(--cyan);display:inline-flex;align-items:center;gap:10px;margin:0 0 14px}
 .eyebrow::before{content:"";width:22px;height:1px;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
 .actioncol{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:rgba(255,255,255,.015);display:flex;flex-direction:column;gap:8px}
-.actionchip{width:100%;justify-content:flex-start}
+.actionchip{width:100%;justify-content:flex-start;align-items:flex-start;text-align:left;white-space:normal}
+.actionchip .idtag{flex:0 0 auto;white-space:nowrap}
+.actionchip .actiontxt{flex:1 1 auto;min-width:0;color:var(--ink-soft);font-family:var(--sans)}
 .rollup{width:100%;border-collapse:collapse;margin-top:10px}
 .rollup td,.rollup th{border-bottom:1px solid var(--line);padding:8px 10px;font-size:.85rem}
 
@@ -1429,6 +1488,16 @@ footer .ext{margin:0 4px}
   .bg-grid,.scanline,.toolbar,.toc,.toolbar-cards,.copychip,input[type=search]{display:none !important}
   .layout{display:block;max-width:none;padding:0}
   .wrap{max-width:none;padding:0}
+  /* Una sola columna en impresion para .chart-grid/.facets (en vez del
+     repeat(auto-fit,minmax(...)) de pantalla): no todos los conversores a PDF
+     soportan bien CSS Grid con funciones auto-fit/minmax (weasyprint, notablemente,
+     puede recortar o superponer el contenido en vez de apilarlo). Un grid de 1
+     columna es trivial de soportar en cualquier motor -> nunca se pierde ni se
+     encima contenido, aunque ocupe mas paginas. Chrome/Chromium headless (el
+     conversor preferido, ver try_pdf) SI soporta el grid completo y no necesita
+     esto, pero el fallback debe verse bien tambien. */
+  .chart-grid,.facets{display:block !important}
+  .chart-grid>.chart,.facets>.facet{margin-bottom:12px}
   .fcard{break-inside:avoid}
   .fcard summary::after,.dhead::after{display:none}
   details:not([open]) > *:not(summary){display:block !important}
@@ -1662,7 +1731,8 @@ def build_executive_html(L, md_name, pdf_name_exec, tech_html_name, has_pdf=Fals
             body = '<p class="muted">(nada)</p>'
         else:
             body = "".join(
-                f'<div class="chip actionchip"><code>{esc(it.get("id","?"))}</code> {esc(it.get("title",""))}</div>'
+                f'<div class="chip actionchip"><code class="idtag">{esc(it.get("id","?"))}</code>'
+                f'<span class="actiontxt">{esc(it.get("title",""))}</span></div>'
                 for it in items
             )
         return f'<div class="actioncol"><div class="chart-t">{esc(title)}</div>{body}</div>'
@@ -1770,7 +1840,18 @@ def _find_chrome():
 
 def try_pdf(html_path, pdf_path):
     """Intenta generar el PDF con el primer convertidor disponible. Devuelve el
-    nombre de la herramienta usada, o None si ninguno esta disponible."""
+    nombre de la herramienta usada, o None si ninguno esta disponible.
+
+    Orden de preferencia (importa, no es arbitrario): Chrome/Chromium/Edge
+    headless PRIMERO, weasyprint y wkhtmltopdf como fallback. El CSS del informe
+    usa Grid moderno (incl. repeat(auto-fit,minmax(...))) para las cards de
+    diagnostico y los graficos: verificado visualmente que weasyprint 66 (motor
+    de layout propio, no un navegador real) recorta o SUPERPONE ese contenido en
+    vez de apilarlo -> perdida de datos real en el PDF (no en el HTML, que se ve
+    bien). Un Chrome/Chromium/Edge real soporta el CSS completo y produce un PDF
+    fiel al HTML interactivo. Si no hay ningun Chrome disponible, weasyprint /
+    wkhtmltopdf siguen siendo mejor que nada — por eso el CSS de impresion tiene
+    ademas un fallback de una sola columna para ese caso (ver @media print)."""
     apath = os.path.abspath(html_path)
     ppath = os.path.abspath(pdf_path)
 
@@ -1781,13 +1862,6 @@ def try_pdf(html_path, pdf_path):
         except Exception:
             return False
 
-    if shutil.which("weasyprint") and _run(["weasyprint", apath, ppath]):
-        return "weasyprint"
-    # El informe es self-contained (SVG inline, sin recursos externos), asi que NO
-    # se habilita --enable-local-file-access: contenido derivado del ledger no debe
-    # poder cargar archivos locales al renderizar.
-    if shutil.which("wkhtmltopdf") and _run(["wkhtmltopdf", "--quiet", apath, ppath]):
-        return "wkhtmltopdf"
     chrome = _find_chrome()
     if chrome:
         url = "file://" + apath
@@ -1795,6 +1869,13 @@ def try_pdf(html_path, pdf_path):
             return os.path.basename(chrome)
         if _run([chrome, "--headless", "--disable-gpu", f"--print-to-pdf={ppath}", url]):
             return os.path.basename(chrome)
+    if shutil.which("weasyprint") and _run(["weasyprint", apath, ppath]):
+        return "weasyprint"
+    # El informe es self-contained (SVG inline, sin recursos externos), asi que NO
+    # se habilita --enable-local-file-access: contenido derivado del ledger no debe
+    # poder cargar archivos locales al renderizar.
+    if shutil.which("wkhtmltopdf") and _run(["wkhtmltopdf", "--quiet", apath, ppath]):
+        return "wkhtmltopdf"
     return None
 
 

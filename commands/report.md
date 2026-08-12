@@ -22,8 +22,9 @@ condensada, mas el Markdown fuente), descargables desde el panel:
   (Cmd/Ctrl+P -> Guardar como PDF), enlaces a .md y .pdf, y acceso al resumen
   ejecutivo.
 - `.vuln-hunter/audit-report.pdf` — PDF de la version tecnica, solo si hay
-  convertidor disponible (weasyprint / wkhtmltopdf / Chrome|Chromium|Edge
-  headless). Si no, se omite y se usa el boton del HTML.
+  convertidor disponible: se prefiere Chrome|Chromium|Edge headless (mejor
+  fidelidad de layout), cae a weasyprint/wkhtmltopdf si no hay ninguno. Si no
+  hay ningun convertidor, se omite y se usa el boton del HTML.
 - `.vuln-hunter/audit-report-executive.html` — version EJECUTIVA condensada:
   veredicto, KPIs, graficos, solo los hallazgos de mayor riesgo (P0/P1/KEV) y
   plan de accion, con enlace de vuelta a la version tecnica para el detalle
